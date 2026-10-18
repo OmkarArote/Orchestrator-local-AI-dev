@@ -1,5 +1,6 @@
 // Chat attachment chips. Uploads go to POST /api/attachments as raw bytes. Nothing here renders file contents.
 import { el, bytes } from './ui.js';
+import { icon } from './icons.js';
 
 export async function uploadFile(file) {
   const r = await fetch('/api/attachments', {
@@ -17,5 +18,5 @@ export function chipRow(items, onRemove) {
   return el('div', { className: 'row att-chips' }, ...items.map((it) => el('span', { className: 'chip' },
     `${it.name || 'file'}`,
     el('span', { className: 'small dim', textContent: ` ${it.kind || ''} ${it.size ? bytes(it.size) : ''}`.trim() }),
-    el('button', { className: 'chip-x', type: 'button', 'aria-label': `Remove ${it.name || 'attachment'}`, textContent: '\u2715', onclick: () => onRemove(it.id) }))));
+    el('button', { className: 'chip-x ico', type: 'button', 'aria-label': `Remove ${it.name || 'attachment'}`, onclick: () => onRemove(it.id) }, icon('x')))));
 }

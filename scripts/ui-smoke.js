@@ -89,7 +89,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       await waitFor("document.querySelector('.chat-item.on')", 'conversation listed');
       await ev(clickText('.chat-head button', 'Delete')); await waitFor("document.querySelector('.modal')", 'confirm'); await ev(clickText('.modal button', 'Delete')); await waitFor("!document.querySelector('.chat-item')", 'deleted');
     });
-    await step('theme toggle', async () => { await ev(clickText('button', '\u25D0 Theme')); await waitFor("document.documentElement.dataset.theme", 'theme set'); });
+    await step('theme toggle', async () => { await ev(clickText('button', 'Theme')); await waitFor("document.documentElement.dataset.theme", 'theme set'); });
     await step('Esc closes modal', async () => { await go('#/projects'); await ev(clickText('button', '+ New project')); await waitFor("document.querySelector('.modal')", 'open'); await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 }); await waitFor("!document.querySelector('.modal')", 'closed'); });
     if (remote) await step('approve & merge task #1 through the confirm modal', async () => {
       await go('#/tasks/1?nostream=1'); await waitFor("[...document.querySelectorAll('#main button')].some((b) => b.textContent.trim().startsWith('Approve & merge'))", 'merge button');

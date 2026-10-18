@@ -55,7 +55,7 @@ Localhost-only (Host/Origin checks, no auth, so do not expose the port), authori
 ### Development
 
 ```bash
-npm test            # 424 tests on the author machine (424 pass, 0 fail, 0 skipped; same with CI=1); fresh-clone/CI count is recorded after the pull-request run (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
+npm test            # 425 tests on the author machine (425 pass, 0 fail, 0 skipped; same with CI=1); fresh-clone/CI count is recorded after the pull-request run (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
 npm run doctor      # same as ./setup.sh
 ```
 
@@ -65,7 +65,7 @@ Issues and pull requests are welcome. License: MIT.
 
 ---
 
-## What's new (M1-M13)
+## What's new (M1-M14)
 
 * **M1 - Cursor usage counters** (schema v5): the old daily Cursor caps are gone; every Cursor run is counted per project/service (`GET /api/cursor/usage`). Cursor still runs only after an approve-start / approve-plan / approve-escalation click.
 * **M2 - Chat** (`#/chat`): conversations with the local Ollama model (streamed, read-only, no tools), model card, `ORCH_CHAT_NUM_CTX`.
@@ -80,6 +80,7 @@ Issues and pull requests are welcome. License: MIT.
 * **M11 - Task attachments**: the new-task form can attach files. The context bundle gains an `ATTACHMENTS` part. Local engines always get the derived text. `cursor`, `auto` and `auto-route` get it only when that attachment's "to Cursor" tick is on. The task page says whether it was sent. The file is not copied into the worktree.
 * **M12 - Audio and video**: ffmpeg extracts 16 kHz mono audio and at most 16 frames (scene change and a uniform sample, 768px, metadata stripped). Caps are 60 minutes of audio and 10 minutes of video. Whisper is used only when `whisper-cli` and `ORCH_WHISPER_MODEL` are already on the machine. Otherwise the attachment stays and the answer is "transcriber not installed". Install commands are printed, never run. Heavy media waits for the local-task lane.
 * **M13 - Prompt compaction**: `lib/prompt-compact.js` tidies whitespace, drops repeated lines and boilerplate outside code fences, shrinks long CSV and logs, and can rank paragraphs. Code fences stay byte-for-byte. Running it twice changes nothing. A chars-per-token average starts at 3.5 and is updated from real prompt sizes. The rolling chat summary stays off.
+* **M14 - Icons**: nav, status and empty-state marks are Tabler outline SVGs built in the page (`public/js/icons.js`). Path data only. The MIT notice is in `THIRD_PARTY_NOTICES.md`. SVG file uploads stay rejected.
 * **Safety hardening**: the real database (`data/orchestrator.db`) is opened only by `node server.js` (override on purpose with `ORCH_ALLOW_DEFAULT_DB=1`); tests and scripts must set `ORCH_DB`.
 
 # Reference
@@ -140,7 +141,7 @@ Files:
 | `.cursor/rules/` | this repository's own Cursor rules (conventions and guard rules) |
 | `.github/workflows/ci.yml` | CI: `npm test` on ubuntu and macOS, Node 22 |
 | `lib/proc.js` | subprocess + git helpers with hard timeouts |
-| `public/` | dashboard (no build step) |
+| `public/` | dashboard (no build step). Icons: `public/js/icons.js`. Notices: `THIRD_PARTY_NOTICES.md` |
 | `data/orchestrator.db` | the database (history is kept; do not delete). Pre-migration snapshots: `data/pre-projects-migration-*.db` |
 | `start.sh` / `stop.sh` | background start/stop using `data/orchestrator.pid` |
 

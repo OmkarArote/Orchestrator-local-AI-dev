@@ -1,6 +1,7 @@
 // Chat page: conversation list | thread | model card. Talks to the local model only (no tools, no file access). Answers stream over a POST + SSE:
 // fetch() reads the body, and aborting the fetch (Stop button / leaving the page) aborts the upstream Ollama request on the server.
 import { el, clear, api, badge, chip, bytes, ago, empty, select, toast, toastError, confirmDialog, promptDialog, busy } from './ui.js';
+import { icon } from './icons.js';
 import { uploadFile, chipRow } from './attachments.js';
 import { parseMarkdown, sseParser, mentionAt } from './md-parse.js';
 
@@ -28,7 +29,7 @@ export function renderMarkdown(text) {
 }
 
 const fmtChars = (n) => (n === null || n === undefined ? '-' : n >= 1000 ? `${(n / 1000).toFixed(1)}k chars` : `${n} chars`);
-const KIND_ICON = { project: '\u25A3', service: '\u25C8', file: '\u2630' };
+const KIND_ICON = { project: 'folder', service: 'cpu', file: 'file' };
 
 /** Collapsible "Context used": what each @mention pulled in (layer, source, line range, size), what was skipped and why, redactions. From the stored manifest. */
 export function contextBlock(man, open = false) {
@@ -160,7 +161,7 @@ export async function render(main, route) {
   function drawList() {
     clear(left, el('button', { className: 'btn', textContent: '+ New chat', onclick: (e) => busy(e.currentTarget, newChat) }),
       st.convs.length ? el('div', { className: 'chat-items', role: 'list' }, ...st.convs.map((c) => el('a', { href: `#/chat/${c.id}`, role: 'listitem', className: `chat-item ${st.conv && st.conv.id === c.id ? 'on' : ''}`, 'aria-current': st.conv && st.conv.id === c.id ? 'page' : null },
-        el('div', { className: 'ellipsis', textContent: c.title || 'New chat' }), el('div', { className: 'small dim' }, `${c.message_count} msg \u00b7 ${ago(c.updated_at)}`, st.active && st.active.conversation_id === c.id ? ' \u00b7 \u25CF live' : '')))) : el('div', { className: 'small dim mt', textContent: 'No conversations yet.' }));
+        el('div', { className: 'ellipsis', textContent: c.title || 'New chat' }), el('div', { className: 'small dim ico' }, `${c.message_count} msg \u00b7 ${ago(c.updated_at)}`, st.active && st.active.conversation_id === c.id ? [' \u00b7 ', icon('point'), ' live'] : '')))) : el('div', { className: 'small dim mt', textContent: 'No conversations yet.' }));
   }
   function drawHead() {
     const c = st.conv; const info = st.info;
@@ -182,7 +183,7 @@ export async function render(main, route) {
   }
   function drawThread() {
     const c = st.conv;
-    if (!c) { liveNodes = null; return clear(scroller, empty({ icon: '\u25C7', title: 'Chat with your local model', text: 'Nothing leaves this machine. Pick a conversation or start a new one; no files or repositories are read.', action: el('button', { className: 'btn', textContent: '+ New chat', onclick: (e) => busy(e.currentTarget, newChat) }) })); }
+    if (!c) { liveNodes = null; return clear(scroller, empty({ icon: 'message', title: 'Chat with your local model', text: 'Nothing leaves this machine. Pick a conversation or start a new one; no files or repositories are read.', action: el('button', { className: 'btn', textContent: '+ New chat', onclick: (e) => busy(e.currentTarget, newChat) }) })); }
     const nodes = c.messages.filter((m) => !(st.streaming && m.status === 'streaming')).map(msgNode);
     liveNodes = null;
     if (st.streaming) {
@@ -204,7 +205,7 @@ export async function render(main, route) {
     const drawPop = () => {
       if (!ac || !ac.items.length) return closePop();
       clear(pop, ...ac.items.map((it, i) => el('div', { role: 'option', id: `mention-opt-${i}`, className: `mention-opt ${i === ac.idx ? 'on' : ''}`, 'aria-selected': String(i === ac.idx), onmousedown: (e) => { e.preventDefault(); pick(i); } },
-        el('span', { className: `mention-kind k-${it.kind}`, textContent: KIND_ICON[it.kind] || '@', 'aria-hidden': 'true' }), el('span', { className: 'mention-label', textContent: it.label }), el('span', { className: 'small dim ellipsis', textContent: it.detail || '' }))));
+        el('span', { className: `mention-kind k-${it.kind} ico`, 'aria-hidden': 'true' }, icon(KIND_ICON[it.kind] || 'point')), el('span', { className: 'mention-label', textContent: it.label }), el('span', { className: 'small dim ellipsis', textContent: it.detail || '' }))));
       pop.hidden = false; ta.setAttribute('aria-expanded', 'true'); ta.setAttribute('aria-activedescendant', `mention-opt-${ac.idx}`);
       const on = pop.querySelector('.on'); if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest' });
     };
@@ -257,11 +258,11 @@ export async function render(main, route) {
     const pinBox = el('label', { className: 'row small', title: 'Keep the derived text in later turns of this chat' }, el('input', { type: 'checkbox', checked: st.pin, 'aria-label': 'Pin attachments', onchange: (e) => { st.pin = e.currentTarget.checked; } }), 'Pin');
     clear(composerBox,
       sticky.length ? el('div', { className: 'row small', title: 'Follow-up questions keep using these (fresh code is retrieved each time). Remove one to stop.' }, el('span', { className: 'dim', textContent: 'Sticky context:' }),
-        ...sticky.map((m) => el('span', { className: 'chip e-local' }, m.label, el('button', { className: 'chip-x', type: 'button', 'aria-label': `Remove ${m.label}`, title: 'Remove', textContent: '\u2715', onclick: (e) => busy(e.currentTarget, () => updateConv({ mentions: sticky.filter((x) => x !== m) })) })))) : null,
+        ...sticky.map((m) => el('span', { className: 'chip e-local' }, m.label, el('button', { className: 'chip-x ico', type: 'button', 'aria-label': `Remove ${m.label}`, title: 'Remove', onclick: (e) => busy(e.currentTarget, () => updateConv({ mentions: sticky.filter((x) => x !== m) })) }, icon('x'))))) : null,
       chipRow(st.pending, (id) => { st.pending = st.pending.filter((p) => p.id !== id); drawComposer(); }),
       el('div', { className: 'mention-wrap' }, pop, ta),
       el('div', { className: 'row end' }, fileInput, el('button', { className: 'btn sm sec', type: 'button', textContent: 'Attach', disabled: !!st.streaming || c.archived, onclick: () => fileInput.click() }), pinBox, busyOther ? el('span', { className: 'small t-warn', textContent: 'another answer is streaming' }) : null,
-        st.streaming ? el('button', { className: 'btn bad', textContent: '\u25A0 Stop', onclick: () => st.streaming && st.streaming.ac.abort() }) : el('button', { className: 'btn', textContent: 'Send', disabled: !!busyOther, onclick: submit })));
+        st.streaming ? el('button', { className: 'btn bad ico', onclick: () => st.streaming && st.streaming.ac.abort() }, icon('player-stop'), ' Stop') : el('button', { className: 'btn', textContent: 'Send', disabled: !!busyOther, onclick: submit })));
     if (!st.streaming && !busyOther) setTimeout(() => { if (st.alive && document.contains(ta)) ta.focus({ preventScroll: true }); }, 0);
   }
 
@@ -270,7 +271,7 @@ export async function render(main, route) {
     if (!i) return clear(right, el('div', { className: 'card skel', style: { height: '260px' } }));
     const kv = (k, ...v) => el('div', { className: 'kv-row' }, el('span', { className: 'dim small', textContent: k }), el('span', { className: 'v' }, ...v));
     const ok = i.status && i.status.reachable;
-    const rows = [kv('Ollama', el('span', { className: ok ? 't-ok' : 't-bad', textContent: '\u25CF ' }), ok ? `v${i.status.version || '?'} reachable` : 'not reachable')];
+    const rows = [kv('Ollama', el('span', { className: `${ok ? 't-ok' : 't-bad'} ico` }, icon('point')), ok ? `v${i.status.version || '?'} reachable` : 'not reachable')];
     if (ok && i.model) {
       const m = i.model, ctx = i.ctx, run = i.running, last = lastTurn();
       const used = run && run.context_length ? ctx.in_use : null;

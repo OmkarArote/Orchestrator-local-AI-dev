@@ -32,7 +32,7 @@ code, pre, .mono { font-family: var(--mono); } code { background: var(--surface-
 .brand small { display: block; font-weight: 500; color: var(--dim); font-size: 11px; }
 .nav a { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; color: var(--fg); font-weight: 500; }
 .nav a:hover { background: var(--surface-2); text-decoration: none; } .nav a.on { background: var(--acc-soft); color: var(--acc); }
-.nav .ico { width: 18px; text-align: center; opacity: .9; } .nav .count { margin-left: auto; font-size: 11px; background: var(--surface-2); color: var(--dim); padding: 0 7px; border-radius: 999px; }
+.nav .ico { width: 18px; text-align: center; opacity: .9; } .ico svg { width: 1em; height: 1em; vertical-align: -0.125em; } .nav .count { margin-left: auto; font-size: 11px; background: var(--surface-2); color: var(--dim); padding: 0 7px; border-radius: 999px; }
 .nav a.on .count { background: var(--acc); color: var(--acc-fg); }
 .side-foot { margin-top: auto; display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 12px; }
 .side-foot .chip { justify-content: flex-start; white-space: normal; }

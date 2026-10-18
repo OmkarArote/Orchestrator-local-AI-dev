@@ -97,7 +97,7 @@ async function renderList(main) {
         el('div', { className: 'row' }, el('b', { textContent: `#${f.id} ${f.title}` }), featureBadge(f.status), el('span', { style: { flex: 1 } }), chip(`owner ${projName(f.project_id)}`)),
         el('div', { className: 'row small' }, ...f.steps.map((s) => el('span', { className: 'row' }, badge(`${s.role === 'provider' ? 'P' : 'C'}${s.step_no}`, 'nodot'), ` ${s.project}/${s.service} `, statusBadge(s.status)))),
         f.drift ? el('div', { className: 'callout warn small', textContent: 'contract drift: the provider built something else than the contract' }) : null)))
-        : empty({ icon: '\u21C4', title: 'No features yet', text: 'Create one to coordinate a provider service and its consumers.' }));
+        : empty({ icon: 'arrows-exchange', title: 'No features yet', text: 'Create one to coordinate a provider service and its consumers.' }));
     } catch (e) { clear(host, el('div', { className: 'callout bad', textContent: e.message })); }
   };
   await draw();

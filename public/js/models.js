@@ -1,5 +1,6 @@
 // Models panel: Ollama status, installed models, role assignment (validated against /api/show), catalog with verified sizes. Downloads are disabled.
 import { el, clear, api, badge, chip, bytes, empty, skeletonCards, field, select, modal, confirmDialog, toast, toastError, busy } from './ui.js';
+import { icon } from './icons.js';
 import { loadOllama } from './state.js';
 
 const ROLE_HELP = {
@@ -35,8 +36,8 @@ export async function render(main) {
     const installed = (models.models || []);
     clear(root,
       el('div', { className: 'page-head' }, el('div', { className: 'grow' }, el('h1', {}, 'Models'), el('p', {}, 'Local models served by Ollama. Assign them to roles; settings are validated against what the model really supports.')),
-        el('button', { className: 'btn sec', textContent: '\u21BB Refresh', onclick: (e) => busy(e.currentTarget, () => load(true)) })),
-      statusCard(st), el('h2', { className: 'mt mb' }, 'Installed'), models.error ? el('div', { className: 'callout bad' }, `Cannot list models: ${models.error}`) : installed.length ? el('div', { className: 'grid auto' }, ...installed.map(modelCard)) : empty({ icon: '\u25C8', title: 'No models installed', text: 'Ollama has no models yet. Downloads are disabled in this build; install one with the ollama CLI yourself.' }),
+        el('button', { className: 'btn sec ico', onclick: (e) => busy(e.currentTarget, () => load(true)) }, icon('refresh'), ' Refresh')),
+      statusCard(st), el('h2', { className: 'mt mb' }, 'Installed'), models.error ? el('div', { className: 'callout bad' }, `Cannot list models: ${models.error}`) : installed.length ? el('div', { className: 'grid auto' }, ...installed.map(modelCard)) : empty({ icon: 'cpu', title: 'No models installed', text: 'Ollama has no models yet. Downloads are disabled in this build; install one with the ollama CLI yourself.' }),
       el('h2', { className: 'mt mb' }, 'Roles'), rolesCard(roles, installed, st),
       el('h2', { className: 'mt mb' }, 'Catalog'), catalogView(catalog));
   }

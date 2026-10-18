@@ -35,7 +35,7 @@ export async function memoryTab(box, ctx) {
   async function draw() {
     await loadMem(); const mine = S.memProps.filter((m) => m.project_id === p.id);
     clear(box, el('div', { className: 'small dim mb' }, 'After a task reaches review the local model drafts 1\u20135 notes. They are appended to MEMORY.md only when you approve. Approved entries become context for later tasks.'),
-      mine.length ? el('div', { className: 'stack' }, ...mine.map((m) => proposalCard(m, async () => { await draw(); ctx.refreshProject(); }, false))) : empty({ icon: '\u270E', title: 'No memory proposals', text: 'They appear here after tasks reach review.' }));
+      mine.length ? el('div', { className: 'stack' }, ...mine.map((m) => proposalCard(m, async () => { await draw(); ctx.refreshProject(); }, false))) : empty({ icon: 'pencil', title: 'No memory proposals', text: 'They appear here after tasks reach review.' }));
   }
   await draw();
 }
@@ -53,7 +53,7 @@ export async function sequencesTab(box, ctx) {
   const list = el('div', { className: 'stack' });
   for (const g of groups) list.append(groupCard(g, redo));
   clear(box, el('div', { className: 'callout info small mb' }, 'A sequence is a list of steps, usually one per service. Each step is its own task, branch, check and review; one start approval covers the whole sequence. Steps in different repositories are independent (no atomic cross-repo merge \u2013 you approve each merge).'),
-    groups.length ? list : empty({ icon: '\u21E2', title: 'No sequences yet', text: 'Create one below to coordinate a change across services.' }), createForm(p, redo));
+    groups.length ? list : empty({ icon: 'arrows-exchange', title: 'No sequences yet', text: 'Create one below to coordinate a change across services.' }), createForm(p, redo));
 }
 /** What one start approval of the whole sequence will cause on Cursor (counted, not capped: this sentence is the only brake before the fan-out). */
 function cursorRunsText(g) {

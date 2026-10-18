@@ -42,5 +42,20 @@ describe('M10 dashboard assets', () => {
     assert.match(src, /downloads disabled/);
     assert.match(src, /disabled: (true|!)/);
   });
+  it('nav icons are named Tabler marks, and every icon() name exists', () => {
+    const app = fs.readFileSync(path.join(PUB, 'app.js'), 'utf8');
+    const nav = app.slice(app.indexOf('const NAV'), app.indexOf('function parseRoute'));
+    assert.doesNotMatch(nav, /\\u[0-9a-fA-F]{4}/);
+    assert.doesNotMatch(fs.readFileSync(path.join(PUB, 'index.html'), 'utf8'), /&#9889;/);
+    const icons = fs.readFileSync(path.join(PUB, 'js', 'icons.js'), 'utf8');
+    const defined = new Set([...icons.matchAll(/^ {2}'?([a-z0-9-]+)'?:/gm)].map((m) => m[1]));
+    assert.ok(defined.size >= 30);
+    const files = ['app.js', ...fs.readdirSync(path.join(PUB, 'js')).map((f) => `js/${f}`)];
+    for (const m of files) {
+      const src = fs.readFileSync(path.join(PUB, m), 'utf8');
+      for (const call of src.matchAll(/icon\(\s*'([a-z0-9-]+)'/g)) assert.ok(defined.has(call[1]), `${m} icon('${call[1]}')`);
+    }
+    assert.match(fs.readFileSync(path.join(ROOT, 'lib', 'sniff.js'), 'utf8'), /SVG files are not accepted/);
+  });
 });
 // (the pull/delete endpoints themselves are asserted 403 in m9-models.test.js)

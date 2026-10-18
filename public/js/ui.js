@@ -1,4 +1,5 @@
 // Shared UI helpers: DOM builder, API client, toasts, modals/dialogs, small widgets. Plain ES module, no dependencies.
+import { icon, ICONS } from './icons.js';
 export const $ = (s, root = document) => root.querySelector(s);
 export const $$ = (s, root = document) => [...root.querySelectorAll(s)];
 
@@ -41,7 +42,10 @@ export const shortPath = (p) => (p ? String(p).replace(/^\/Users\/[^/]+/, '~') :
 export const badge = (text, cls = '', title) => el('span', { className: `badge ${cls}`, title, textContent: text });
 export const chip = (text, cls = '', title) => el('span', { className: `chip ${cls}`, title, textContent: text });
 export const statusBadge = (s) => badge(s, 's-' + s);
-export function empty({ icon = '\u25CB', title, text, action }) { return el('div', { className: 'empty' }, el('div', { className: 'big', textContent: icon }), el('h3', { textContent: title }), text ? el('p', { textContent: text }) : null, action || null); }
+export function empty({ icon: name = 'circle', title, text, action }) {
+  const mark = ICONS[name] ? icon(name) : name;
+  return el('div', { className: 'empty' }, el('div', { className: 'big ico' }, mark), el('h3', { textContent: title }), text ? el('p', { textContent: text }) : null, action || null);
+}
 export function skeletonCards(n = 3, cls = 'skel-card') { return el('div', { className: 'grid auto', 'aria-busy': 'true' }, ...Array.from({ length: n }, () => el('div', { className: `skel ${cls}` }))); }
 export function skeletonLines(n = 4) { return el('div', { className: 'stack', 'aria-busy': 'true' }, ...Array.from({ length: n }, (_, i) => el('div', { className: 'skel', style: { width: `${90 - i * 12}%` } }))); }
 export function field(label, input, hint) { return el('div', { className: 'field' }, el('label', {}, label), input, hint ? el('div', { className: 'hint', textContent: hint }) : null); }
@@ -50,7 +54,7 @@ export function select(options, value, props = {}) { const s = el('select', prop
 // ---------------------------------------------------------------- toasts
 export function toast(msg, kind = 'info', ms = 4500) {
   const host = $('#toasts');
-  const t = el('div', { className: `toast ${kind}`, role: kind === 'bad' ? 'alert' : 'status' }, el('div', {}, String(msg)), el('button', { className: 'x', 'aria-label': 'Dismiss', textContent: '\u00D7', onclick: () => t.remove() }));
+  const t = el('div', { className: `toast ${kind}`, role: kind === 'bad' ? 'alert' : 'status' }, el('div', {}, String(msg)), el('button', { className: 'x ico', 'aria-label': 'Dismiss', onclick: () => t.remove() }, icon('x')));
   host.append(t);
   if (ms) setTimeout(() => t.remove(), kind === 'bad' ? Math.max(ms, 8000) : ms);
   return t;
@@ -74,7 +78,7 @@ export function modal({ title, body, footer, wide = false, dismissable = () => t
   const foot = el('div', { className: 'modal-foot' }, footer);
   const overlay = el('div', { className: 'overlay' });
   const box = el('div', { className: `modal${wide ? ' wide' : ''}`, role: 'dialog', 'aria-modal': 'true', 'aria-label': title || 'dialog' },
-    el('div', { className: 'modal-head' }, el('h3', { textContent: title || '' }), el('button', { className: 'btn ghost icon', 'aria-label': 'Close', textContent: '\u00D7', onclick: () => api2.close(null) })),
+    el('div', { className: 'modal-head' }, el('h3', { textContent: title || '' }), el('button', { className: 'btn ghost icon ico', 'aria-label': 'Close', onclick: () => api2.close(null) }, icon('x'))),
     bodyEl, footer === undefined ? null : foot);
   overlay.append(box);
   overlay.addEventListener('mousedown', (e) => { if (e.target === overlay && api2.dismissable()) api2.close(null); });
