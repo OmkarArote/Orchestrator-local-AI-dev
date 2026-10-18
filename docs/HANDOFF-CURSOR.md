@@ -9,14 +9,15 @@ Companion documents: [`docs/plans/t70-media-and-prompt-plan.md`](plans/t70-media
 
 | Item | Value |
 |---|---|
-| `main` (shipped) | M1-M6 merged (`13fa03a`, schema v6). M7 through M10 are on branch `wip/m7-m14`, not merged |
+| `main` (shipped) | M1-M6 merged (`13fa03a`, schema v6). M7 through M11 are on branch `wip/m7-m14`, not merged |
+| **M11 (task attachments)** | **implemented on `wip/m7-m14`, not merged**. New-task form attaches files. The bundle gets an `ATTACHMENTS` part. Local engines always get derived text. `cursor` / `auto` / `auto-route` only when `to_cloud` is set. Task detail says sent to Cursor yes/no. Files are not copied into the worktree |
 | **M10 (media roles)** | **implemented on `wip/m7-m14`, not merged**. `ROLES` is 13. `image`/`video` need `vision`. `document` needs context >= 8192. `audio` is the whisper tool preset. No vision model: tesseract text plus a notice. `images` are attached only inside `lib/ollama.js`. No new schema |
 | **M9 (auto selector)** | **implemented on `wip/m7-m14`, not merged**. Pure `lib/model-select.js`. `models.resolve` is async; `effective()` stays sync. `auto` is a chat/coding/conversation value and does not cover routing or memory. Catalog has `strengths`, `capabilities_expected`, and `qwen3-vl:4b-instruct`. Observed `load_ms` is stored in `settings_kv`. Nothing is pulled |
 | **M8 (chat uploads)** | **implemented on `wip/m7-m14`, not merged**. Composer attach / drop / paste, up to 8 ids on `POST /api/conversations/:id/messages`, ledger layer at 40% of the context budget, history stub, pin replays derived text. No `images` field. No new schema |
 | **M7 (extractors)** | **implemented on `wip/m7-m14`, not merged**. Text, CSV summary, HTML, Office/EPUB/ODT, PDF (poppler / PDFKit / low-fidelity), tesseract OCR. `lib/media-tools.js` is the only spawner. No new schema |
-| Tests on this branch | **418 tests, 418 pass, 0 fail, 0 skipped**. Measured once with `CI=1` (`duration_ms` 39443) and once without (`duration_ms` 40522) |
+| Tests on this branch | **420 tests, 420 pass, 0 fail, 0 skipped**. Measured once with `CI=1` (`duration_ms` 41094) and once without (`duration_ms` 40981) |
 | **M6 (attachments foundation)** | **merged** in pull request #1 (`13fa03a` on `main`). Schema v6. See section 1a |
-| Tests on `main` before M7 | **399 tests, 399 pass, 0 fail, 0 skipped** on the author machine at the M6 merge. This branch is 418 |
+| Tests on `main` before M7 | **399 tests, 399 pass, 0 fail, 0 skipped** on the author machine at the M6 merge. This branch is 420 |
 | CI (GitHub Actions, ubuntu + macos) | M6 pull request #1 was merged by the maintainer. This branch's CI has not been recorded yet |
 | Fresh clone / CI test counts differ from the author machine because the migration tests that need a private DB backup, and the live-Ollama test, skip there | |
 | Runtime | Node >= 22.5, **zero npm dependencies** (`node:sqlite`, `node:test`, global `fetch`), vanilla ES-module UI, no build step |
@@ -71,7 +72,7 @@ Companion documents: [`docs/plans/t70-media-and-prompt-plan.md`](plans/t70-media
 ---------------------------------------------------------------------------------------------------
 ## 2. Pending work (in order)
 
-Order: **M7 through M10 are done on `wip/m7-m14`, not merged. Next: M11 -> M12 -> M13 -> M14.**
+Order: **M7 through M11 are done on `wip/m7-m14`, not merged. Next: M12 -> M13 -> M14.**
 
 ### M7 Extractors (3 d)
 * **Scope**: `lib/extract/{text,csv,zip-office,html,pdf,image}.js` + `lib/media-tools.js` becomes the **only spawner** of tesseract/ffmpeg/pdftotext/pdftoppm/whisper (via `lib/proc.js`, argv arrays, hard timeouts, output caps, scratch cwd, `nice`). Text (done in M6), CSV summary (header, row count, column types/min/max/top values, first N rows, never dump a big table), pure-Node ZIP/XML readers for docx/xlsx/pptx/odt/epub (`w:t`, `a:t`, shared strings, sheet cells; **`zlib.inflateRawSync(buf, {maxOutputLength})`**, entries read in memory by exact expected names, never extracted to disk), html (strip tags, drop script/style, never rendered), PDF text (poppler `pdftotext -layout` -> PDFKit helper -> low-fidelity pure-Node, labelled), scanned PDF/image OCR with tesseract + confidence (page cap, time cap), derivation cache in `attachment_derivations`, redaction + injection flag already provided by `exposeFor`. Replace `deriveText` with a dispatcher by kind/ext.
