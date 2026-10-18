@@ -72,7 +72,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await step('models: download buttons disabled', async () => { await go('#/models'); await waitFor("[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Download')", 'catalog'); const bad = await ev("[...document.querySelectorAll('button')].filter((b) => b.textContent.trim() === 'Download' && !b.disabled).length"); if (bad) throw new Error(bad + ' enabled download buttons'); });
     await step('chat: new chat, send, streamed answer rendered, model card, delete via modal', async () => {
       await go('#/chat'); await waitFor("[...document.querySelectorAll('#main button')].some((b) => b.textContent.includes('New chat'))", 'chat page'); await ev(clickText('#main button', '+ New chat'));
-      await waitFor("document.querySelector('.chat-composer textarea')", 'composer'); await ev(setVal('.chat-composer textarea', 'hello **there**'));
+      await waitFor("document.querySelector('.chat-composer textarea')", 'composer');
+      await waitFor("[...document.querySelectorAll('.chat-composer button')].some((b) => b.textContent === 'Attach')", 'attach control');
+      await ev(setVal('.chat-composer textarea', 'hello **there**'));
       await ev(clickText('.chat-composer button', 'Send'));
       await waitFor("document.querySelector('.msg.assistant .bubble') && document.querySelector('.msg.assistant .bubble').textContent.includes('Hello world')", 'streamed answer', 8000);
       await waitFor("document.querySelector('.chat-side').innerText.includes('Context window')", 'model card');

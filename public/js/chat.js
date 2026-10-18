@@ -1,6 +1,7 @@
 // Chat page: conversation list | thread | model card. Talks to the local model only (no tools, no file access). Answers stream over a POST + SSE:
 // fetch() reads the body, and aborting the fetch (Stop button / leaving the page) aborts the upstream Ollama request on the server.
 import { el, clear, api, badge, chip, bytes, ago, empty, select, toast, toastError, confirmDialog, promptDialog, busy } from './ui.js';
+import { uploadFile, chipRow } from './attachments.js';
 import { parseMarkdown, sseParser, mentionAt } from './md-parse.js';
 
 // ---------------------------------------------------------------- markdown -> DOM (textContent only)
@@ -32,9 +33,9 @@ const KIND_ICON = { project: '\u25A3', service: '\u25C8', file: '\u2630' };
 /** Collapsible "Context used": what each @mention pulled in (layer, source, line range, size), what was skipped and why, redactions. From the stored manifest. */
 export function contextBlock(man, open = false) {
   if (!man) return null;
-  const ments = man.mentions || [], un = man.unresolved || [];
-  if (!ments.length && !un.length) return null;
-  const head = ments.length ? `Context used: ${ments.map((m) => m.label).join(', ')} \u00b7 ${fmtChars(man.used_chars)} of ${fmtChars(man.limit_chars)}${man.redactions ? ` \u00b7 ${man.redactions} secret-like value(s) redacted` : ''}${man.sticky ? ' \u00b7 sticky' : ''}` : 'Context: no mention could be resolved';
+  const ments = man.mentions || [], un = man.unresolved || [], atts = man.attachments || [];
+  if (!ments.length && !un.length && !atts.length) return null;
+  const head = ments.length ? `Context used: ${ments.map((m) => m.label).join(', ')} \u00b7 ${fmtChars(man.used_chars)} of ${fmtChars(man.limit_chars)}${man.redactions ? ` \u00b7 ${man.redactions} secret-like value(s) redacted` : ''}${man.sticky ? ' \u00b7 sticky' : ''}` : atts.length ? `Attachments: ${atts.map((a) => a.name || a.id).join(', ')}` : 'Context: no mention could be resolved';
   const d = el('details', { className: 'context-used' }, el('summary', { textContent: head }));
   for (const m of ments) {
     d.append(el('div', { className: 'ctx-mention' },
@@ -47,6 +48,7 @@ export function contextBlock(man, open = false) {
       m.tree_left_out && (m.tree_left_out.denied || m.tree_left_out.symlink) ? el('div', { className: 'small dim', textContent: `Never read: ${m.tree_left_out.denied} secret/ignored/binary file(s), ${m.tree_left_out.symlink} symlink(s)` }) : null));
   }
   for (const u of un) d.append(el('div', { className: 'callout warn small', textContent: `${u.raw}: ${u.message}${u.candidates && u.candidates.length ? ` (${u.candidates.slice(0, 6).join(', ')})` : ''}` }));
+  for (const a of atts) d.append(el('div', { className: 'small', textContent: `${a.name || 'file'} (${a.kind || '?'}${a.derivation ? `, ${a.derivation}` : ''}): ${a.included ? `${a.chars || 0} chars${a.truncated ? ', truncated' : ''}${a.redactions ? `, ${a.redactions} redacted` : ''}` : (a.reason || 'not included')}` }));
   if (man.source) d.append(el('div', { className: 'tiny dim', textContent: `Source: ${man.source}. Read-only; chat never writes to a repository.` }));
   d.open = open; return d;
 }
@@ -56,7 +58,7 @@ const fmtTok = (n) => (n === null || n === undefined ? '-' : n >= 10000 ? `${(n 
 const untilIso = (iso) => { const s = Math.round((new Date(iso) - Date.now()) / 1000); return !iso || Number.isNaN(s) ? null : s <= 0 ? 'expiring' : s < 90 ? `${s}s` : `${Math.round(s / 60)} min`; };
 
 export async function render(main, route) {
-  const st = { convs: [], active: null, conv: null, info: null, models: [], streaming: null, draft: '', alive: true, poll: null, infoTimer: null };
+  const st = { convs: [], active: null, conv: null, info: null, models: [], streaming: null, draft: '', pending: [], pin: false, alive: true, poll: null, infoTimer: null };
   const root = el('div', { className: 'chat' }); main.append(root);
   const selId = route && route.id ? Number(route.id) : null;
 
@@ -92,11 +94,13 @@ export async function render(main, route) {
   async function send(text, think) {
     if (st.streaming) return;
     const ac = new AbortController();
+    const ids = st.pending.map((p) => p.id);
+    const pin = st.pin;
     const live = { ac, user: text, answer: '', thinking: '', meta: null, warn: [], error: null, done: null, status: 'streaming' };
-    st.streaming = live; st.draft = ''; drawThread(); drawComposer();
+    st.streaming = live; st.draft = ''; st.pending = []; drawThread(); drawComposer();
     let raf = 0; const refresh = () => { if (!raf) raf = setTimeout(() => { raf = 0; if (st.alive) updateLive(); }, 60); };
     try {
-      const r = await fetch(`/api/conversations/${st.conv.id}/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: text, ...(think === undefined ? {} : { think }) }), signal: ac.signal });
+      const r = await fetch(`/api/conversations/${st.conv.id}/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: text, ...(think === undefined ? {} : { think }), ...(ids.length ? { attachments: ids, pin_attachments: pin } : {}) }), signal: ac.signal });
       if (!(r.headers.get('content-type') || '').includes('text/event-stream')) { const j = await r.json().catch(() => ({})); throw new Error(j.error || `HTTP ${r.status}`); }
       const parser = sseParser(); const dec = new TextDecoder(); const reader = r.body.getReader();
       for (;;) {
@@ -221,6 +225,14 @@ export async function render(main, route) {
         } catch { closePop(); }
       }, 90);
     };
+    const addFiles = async (files) => {
+      for (const f of files) {
+        if (st.pending.length >= 8) { toast('At most 8 attachments.', 'warn'); break; }
+        try { const up = await uploadFile(f); st.pending.push({ id: up.id, name: up.name || f.name, kind: up.kind, size: up.size }); }
+        catch (e) { toastError(e); }
+      }
+      drawComposer();
+    };
     const submit = () => { const t = ta.value.trim(); if (!t || st.streaming) return; if (busyOther) return toast('Another answer is still streaming (one at a time).', 'warn'); closePop(); send(t, c.think).catch(toastError); };
     ta.addEventListener('input', () => { st.draft = ta.value; lookup(); });
     ta.addEventListener('click', lookup);
@@ -234,12 +246,19 @@ export async function render(main, route) {
       }
       if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); submit(); }
     });
+    const fileInput = el('input', { type: 'file', multiple: true, hidden: true, 'aria-label': 'Choose files', onchange: (e) => { const fs = [...e.currentTarget.files]; e.currentTarget.value = ''; addFiles(fs); } });
+    ta.addEventListener('paste', (e) => { const files = [...(e.clipboardData && e.clipboardData.files || [])]; if (files.length) { e.preventDefault(); addFiles(files); } });
+    composerBox.ondragover = (e) => { e.preventDefault(); composerBox.classList.add('drop-on'); };
+    composerBox.ondragleave = () => composerBox.classList.remove('drop-on');
+    composerBox.ondrop = (e) => { e.preventDefault(); composerBox.classList.remove('drop-on'); addFiles([...(e.dataTransfer && e.dataTransfer.files || [])]); };
     const sticky = c.mentions_view || [];
+    const pinBox = el('label', { className: 'row small', title: 'Keep the derived text in later turns of this chat' }, el('input', { type: 'checkbox', checked: st.pin, 'aria-label': 'Pin attachments', onchange: (e) => { st.pin = e.currentTarget.checked; } }), 'Pin');
     clear(composerBox,
       sticky.length ? el('div', { className: 'row small', title: 'Follow-up questions keep using these (fresh code is retrieved each time). Remove one to stop.' }, el('span', { className: 'dim', textContent: 'Sticky context:' }),
         ...sticky.map((m) => el('span', { className: 'chip e-local' }, m.label, el('button', { className: 'chip-x', type: 'button', 'aria-label': `Remove ${m.label}`, title: 'Remove', textContent: '\u2715', onclick: (e) => busy(e.currentTarget, () => updateConv({ mentions: sticky.filter((x) => x !== m) })) })))) : null,
+      chipRow(st.pending, (id) => { st.pending = st.pending.filter((p) => p.id !== id); drawComposer(); }),
       el('div', { className: 'mention-wrap' }, pop, ta),
-      el('div', { className: 'row end' }, busyOther ? el('span', { className: 'small t-warn', textContent: 'another answer is streaming' }) : null,
+      el('div', { className: 'row end' }, fileInput, el('button', { className: 'btn sm sec', type: 'button', textContent: 'Attach', disabled: !!st.streaming || c.archived, onclick: () => fileInput.click() }), pinBox, busyOther ? el('span', { className: 'small t-warn', textContent: 'another answer is streaming' }) : null,
         st.streaming ? el('button', { className: 'btn bad', textContent: '\u25A0 Stop', onclick: () => st.streaming && st.streaming.ac.abort() }) : el('button', { className: 'btn', textContent: 'Send', disabled: !!busyOther, onclick: submit })));
     if (!st.streaming && !busyOther) setTimeout(() => { if (st.alive && document.contains(ta)) ta.focus({ preventScroll: true }); }, 0);
   }

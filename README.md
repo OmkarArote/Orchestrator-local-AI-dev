@@ -55,7 +55,7 @@ Localhost-only (Host/Origin checks, no auth, so do not expose the port), authori
 ### Development
 
 ```bash
-npm test            # 405 tests on the author machine (405 pass, 0 fail, 0 skipped; same with CI=1); fresh-clone/CI count is recorded after the pull-request run (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
+npm test            # 408 tests on the author machine (408 pass, 0 fail, 0 skipped; same with CI=1); fresh-clone/CI count is recorded after the pull-request run (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
 npm run doctor      # same as ./setup.sh
 ```
 
@@ -65,15 +65,16 @@ Issues and pull requests are welcome. License: MIT.
 
 ---
 
-## What's new (M1-M7)
+## What's new (M1-M8)
 
 * **M1 - Cursor usage counters** (schema v5): the old daily Cursor caps are gone; every Cursor run is counted per project/service (`GET /api/cursor/usage`). Cursor still runs only after an approve-start / approve-plan / approve-escalation click.
 * **M2 - Chat** (`#/chat`): conversations with the local Ollama model (streamed, read-only, no tools), model card, `ORCH_CHAT_NUM_CTX`.
 * **M3 - Mentions**: `@project` / `@service` in chat pull in the project's memory, docs and code (lexical retrieval from the git object database, read-only, redacted).
 * **M4 - Cursor rules**: opt-in per service, preview first, explicit approve, committed only on a review branch; hand-written rules are never overwritten. This repo ships its own `.cursor/rules/`.
 * **M5 - Cross-repo features** (`#/features`): contract-first provider/consumer tasks across projects, drift check, merge-order guard with a recorded, typed override.
-* **M6 - Attachments foundation** (schema v6): safe storage for uploaded images, PDFs, Office/EPUB documents, text/CSV/JSON, audio and video (`POST /api/attachments`, see [Attachments](#attachments-m6-foundation)). Content is identified from its bytes, capped, deduplicated and kept owner-only; a model only ever sees *derived text* wrapped as untrusted data. The dashboard has no upload button yet.
+* **M6 - Attachments foundation** (schema v6): safe storage for uploaded images, PDFs, Office/EPUB documents, text/CSV/JSON, audio and video (`POST /api/attachments`, see [Attachments](#attachments-m6-foundation)). Content is identified from its bytes, capped, deduplicated and kept owner-only; a model only ever sees *derived text* wrapped as untrusted data.
 * **M7 - Extractors**: plain text, a CSV/TSV summary (never a full dump), HTML with scripts and styles dropped, Office/EPUB/ODT via an in-memory zip reader, PDF text (poppler, else a macOS PDFKit helper, else a labelled low-fidelity pass) and image OCR with tesseract. A missing tool answers 422 `tool_missing` with the install command. Nothing is installed by the app. Audio and video are still unsupported.
+* **M8 - Chat uploads**: the chat composer can attach, drop or paste a file (up to 8). Derived text is injected on that turn only, inside an untrusted `<attachment>` block and capped at 40% of the context budget. Later turns keep a one-line stub unless the message was pinned. History never sends an `images` field.
 * **Safety hardening**: the real database (`data/orchestrator.db`) is opened only by `node server.js` (override on purpose with `ORCH_ALLOW_DEFAULT_DB=1`); tests and scripts must set `ORCH_DB`.
 
 # Reference
@@ -129,7 +130,7 @@ Files:
 | `lib/llm.js`, `lib/chat.js`, `lib/chat-api.js`, `lib/chat-context.js`, `lib/mentions.js`, `lib/repo-reader.js` | local-model chat, `@mentions`, read-only repository/document retrieval |
 | `lib/cursor-rules.js` | Cursor rules generation (M4) |
 | `lib/features.js`, `lib/features-api.js` | cross-repo features (M5) |
-| `lib/attachments.js`, `lib/attachments-api.js`, `lib/sniff.js`, `lib/media-tools.js`, `lib/extract` | attachments store, upload route, magic-byte sniffing, tool spawning, text/csv/html/office/pdf/image extractors (M6-M7) |
+| `lib/attachments.js`, `lib/attachments-api.js`, `lib/sniff.js`, `lib/media-tools.js`, `lib/extract`, `public/js/attachments.js` | attachments store, upload route, magic-byte sniffing, tool spawning, extractors, chat attach chips (M6-M8) |
 | `lib/errors.js` | shared HTTP error helpers |
 | `.cursor/rules/` | this repository's own Cursor rules (conventions and guard rules) |
 | `.github/workflows/ci.yml` | CI: `npm test` on ubuntu and macOS, Node 22 |
@@ -195,7 +196,7 @@ Chat page: conversations (SQLite, schema v5 tables `chat_conversations` / `chat_
 `lib/chat.js` (logic), `lib/chat-api.js` (HTTP), streaming adapter `ollama.chatStream` in `lib/ollama.js` (native `/api/chat`, NDJSON).
 * Defaults: model = the `chat` role if set, else the `coding` role's model; **`num_ctx` 16384** (`ORCH_CHAT_NUM_CTX`, or the `chat` role's `num_ctx`) and **`think: false`** are always sent explicitly
   (thinking models like `ornith:9b` otherwise default to thinking, and Ollama defaults the window to 4096). Per conversation you can override model, `num_ctx`, sampling options and `think` (validated like a role).
-* `POST /api/conversations/:id/messages {content, think?}` answers **`text/event-stream`** (read with `fetch`, not `EventSource`): `meta` (model, num_ctx, token budget, context manifest, warnings), `token {text}*`,
+* `POST /api/conversations/:id/messages {content, think?, attachments?, pin_attachments?}` answers **`text/event-stream`** (read with `fetch`, not `EventSource`): `meta` (model, num_ctx, token budget, context manifest, warnings), `token {text}*`,
   `thinking {text}*`, then `done {status, prompt_tokens, completion_tokens, ms, warn[]}` or `error {code, message}`. Validation problems (400/404/409) are plain JSON before any stream starts.
 * **One stream at a time, globally** (a second request gets `409 {code:"busy"}`): the model and GPU are shared with aider. Chat deliberately does not join the internal `llm.js` queue, so a long answer never blocks routing/memory calls
   (they would simply compete for the GPU); the model card warns when a local coding task is running.
@@ -302,7 +303,7 @@ Safe storage for images, documents, audio and video, plus text extraction for th
 * **Zip / image bombs**: classification uses the central directory only (entry names + declared sizes): entry count <= 2000, any entry <= 20 MiB declared, total <= 100 MiB declared, ratio <= 100:1 above 1 MiB, no `..` / absolute / backslash-traversal names, no encryption, no nested archives, no zip64. Images are limited to 50 megapixels by their declared dimensions. Extraction inflates Office entries in memory with `maxOutputLength` and the same caps; it never writes zip entries to disk.
 * **Storage**: `<ORCH_ATTACH_DIR>/<sha256[0:2]>/<sha256>` (owner-only 0600/0700). The client's file name is only a sanitised display string and is never used in a path. Uploads stream to `attachments/tmp/`, are size-capped while streaming and renamed into place; aborted uploads leave nothing behind. Every delete goes through `fsguard.removeOwnedFile` (refuses symlinks, anything outside the attachments dir, directories). The optional PDFKit helper, if compiled, is cached at `<ORCH_ATTACH_DIR>/bin/pdfkit-text`.
 * **Other endpoints**: `GET /api/attachments` (list + totals + limits), `GET /api/attachments/:id` (links, derivation summaries), `GET /api/attachments/:id/raw` (**images only**; `nosniff`, `CSP: sandbox`), `POST /api/attachments/:id/derive` (text, CSV summary, HTML, Office/EPUB, PDF, image OCR; audio/video and a missing tool answer 422 `unsupported` or `tool_missing` with the install command), `POST /api/attachments/:id/delete` (409 while still linked), `POST /api/attachments/gc {older_than_hours?}`, `GET /api/media/tools` (detects optional `tesseract`, `pdftotext`/`pdftoppm` (poppler), `ffmpeg`/`ffprobe`, `whisper`, `textutil`, `swiftc`). Those tools run only from `lib/media-tools.js`, and only when a derivation asks for them.
-* **What a model may see**: only *derived text*, never bytes or paths. `lib/attachments.js` (`exposeFor`) wraps it as `<attachment ... trust="untrusted">`, escapes anything that could close or spoof the wrapper, redacts secret-looking strings (counted), flags prompt-injection phrases, caps the size, and for cloud / Cursor engines includes **only attachments with an explicit per-attachment tick** (`attachment_links.to_cloud`, default off). Chat and tasks do not use it yet (M8 / M11).
+* **What a model may see**: only *derived text*, never bytes or paths. `lib/attachments.js` (`exposeFor`) wraps it as `<attachment ... trust="untrusted">`, escapes anything that could close or spoof the wrapper, redacts secret-looking strings (counted), flags prompt-injection phrases, caps the size, and for cloud / Cursor engines includes **only attachments with an explicit per-attachment tick** (`attachment_links.to_cloud`, default off). Chat injects that text on the attaching turn (or again when the message is pinned) through a ledger layer capped at 40% of `context_max_chars`. Later turns replay a one-line stub. Tasks do not use it yet (M11).
 * **Limits per owner** (enforced when linking): 8 attachments per chat message, 20 per task.
 
 ## Cursor CLI engine
@@ -425,7 +426,7 @@ All endpoints are on `http://127.0.0.1:<port>`. POSTs need `Content-Type: applic
 | `GET /api/attachments`, `GET /api/attachments/:id`, `GET /api/attachments/:id/raw` | - | list / detail / image bytes (images only) |
 | `POST /api/attachments/:id/derive`, `POST /api/attachments/:id/delete`, `POST /api/attachments/gc` | `{}` / `{}` / `{older_than_hours?}` | derive text (text/CSV/JSON), delete an unlinked attachment, sweep |
 | `GET /api/media/tools` | - | which optional media tools are installed (detect only) |
-| `POST /api/conversations/:id/messages` | `{content, think?}` | SSE stream: `meta`, `token`, `thinking`, `done` / `error`; 409 `busy` while another answer streams |
+| `POST /api/conversations/:id/messages` | `{content, think?, attachments?, pin_attachments?}` | SSE stream: `meta`, `token`, `thinking`, `done` / `error`; 409 `busy` while another answer streams; `attachments` is up to 8 stored ids |
 | `GET /api/projects/:id/cursor-rules`, `GET .../cursor-rules/preview?service_id=` | - | per-service status; read-only preview with diffs + digest |
 | `POST /api/projects/:id/cursor-rules/optin`, `POST .../cursor-rules/generate` | `{service_id, enabled}`; `{service_id, approve: true, digest}` | opt-in per service; commit on a new review branch + review task (409/400 without opt-in/approval) |
 | `GET/POST /api/features`, `GET /api/features/:id`, `GET .../merge-plan` | `{project_id, title, brief?, contract?, steps:[{project_id?, service_id, title, prompt, engine, files?, plan_first?, ...}]}` (2..8 steps; step 1 = provider) | cross-repo features: list (`?project_id=` matches owner or any step), create (nothing starts), detail (steps, contracts, actuals, drift, merge order, overrides, graph) |
