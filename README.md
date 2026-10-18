@@ -55,7 +55,7 @@ Localhost-only (Host/Origin checks, no auth, so do not expose the port), authori
 ### Development
 
 ```bash
-npm test            # 356 tests on the author machine; ~346 on a fresh clone or CI (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
+npm test            # 356 tests on the author machine; 346-350 on a fresh clone or CI (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
 npm run doctor      # same as ./setup.sh
 ```
 

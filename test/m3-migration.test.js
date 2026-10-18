@@ -123,7 +123,8 @@ describe('M3 migration: failure injection, empty DB, unusual legacy data, rollba
     assert.ok(fs.readdirSync(dir).filter((f) => /^pre-v4-migration/.test(f)).length >= 1, 'backup is taken even when empty');
     const fresh = path.join(dir, 'fresh', 'o.db');
     fs.mkdirSync(path.dirname(fresh));
-    assert.equal(JSON.parse(openWithNewCode(fresh)).v, 5);
+    const seedRoot = path.join(dir, 'seed-root'); fs.mkdirSync(seedRoot);                 // hermetic: do not depend on ~/work existing (a fresh clone on a new machine has none)
+    assert.equal(JSON.parse(openWithNewCode(fresh, { ORCH_AUTHORIZED_ROOTS: seedRoot })).v, 5);
     assert.equal(rows(fresh, 'SELECT COUNT(*) c FROM authorized_roots')[0].c, 1);
     assert.equal(fs.readdirSync(path.dirname(fresh)).filter((f) => /^pre-v[45]/.test(f)).length, 0, 'no backup for a brand-new DB');
   });
