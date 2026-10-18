@@ -52,7 +52,7 @@ Localhost-only (Host/Origin checks, no auth, so do not expose the port), authori
 ### Development
 
 ```bash
-npm test            # 340 tests, no network, no Ollama or Cursor needed (stubs/fakes)
+npm test            # 352 tests, no network, no Ollama or Cursor needed (stubs/fakes)
 npm run doctor      # same as ./setup.sh
 ```
 
@@ -228,6 +228,21 @@ Optional, **off by default, opt-in per service**. Cursor outside the orchestrato
 * **This repository's own rules** are committed in `.cursor/rules/` (`core.mdc` always on, ~350 tokens; `guards.mdc`, `tests.mdc`, `ui.mdc` by file glob): zero dependencies, the `m1-guards` constraints, portable tests, noreply commit identity / no local git identity, plan-first for architectural and DB changes, never claim tests that were not run. `test/m14-cursor-rules.test.js` lints them and checks that what they cite exists.
 * **Not done (deliberately)**: the plan's runner injection ("rules already synced in the repo => do not inline them into the Cursor prompt", worktree-local `orch-rules-*.mdc`) and shrinking `orch-context.mdc`; per-file editing of rules in the UI; local-only (git-ignored) materialisation. Whether Cursor's headless `-p` mode loads these files from a task worktree is documented behaviour but was not verified live (it would spend Pro usage).
 
+## Cross-repo features: contract first (M5)
+
+A **feature** groups tasks across projects/services, e.g. "create this API in service A, integrate it in the frontend repo B". It is a thin parent over a task sequence (`task_groups.gate = 'contract'`, schema v5, **no schema change in M5**); every step is an ordinary task with all existing gates.
+
+* **Flow**: create (all steps `pending`, nothing starts) -> a human **approves the API contract** -> a human **approves the start** (one click = approve-start of every pending step, like a sequence; Cursor steps need the CLI) -> the **provider** (step 1) runs -> when it reaches *review* the orchestrator extracts the **actual API from its diff** (deterministic, no LLM: Express/Fastify-style, Flask/FastAPI decorators, Spring `@XMapping`, Go `.GET("/x")`, Next `route.ts`, OpenAPI files, plus changed schema/proto/graphql files) and stores it as `api_actual` -> **consumers** start with the approved contract **and** the provider's actual API in their context bundle (parts `FEATURE`, `API CONTRACT`, `PROVIDER'S IMPLEMENTATION`, capped to their share of the bundle) -> each task is reviewed and merged by a human.
+* **Gates kept**: approve-start, plan-first (a Cursor consumer with `plan_first` stops at `awaiting_plan`), escalation, human merge. Nothing is merged, pushed or started by the feature itself; Cursor only runs after approval; engine per step is `local`, `cursor` or `auto` (`auto-route` and service `auto` are not allowed in features: a step names its exact service).
+* **Contract artifacts** (`task_artifacts`): `api_contract` versions (`proposed` -> `approved` -> `superseded`; only a human approves; a newer proposal pauses steps that have not started until it is approved), `api_actual` (extracted), `notes` (overrides, ignored drift). Contract text is free-form; if it names endpoints as `METHOD /path` they are compared with the extracted API.
+* **Drift**: if the provider's extracted endpoints differ from the approved contract (missing or extra), the feature is `contract_drift` and consumers **wait**. A human either **accepts the provider's API as the new contract** (new approved version, source `extracted`), fixes the provider (retry step), or **ignores the drift with a typed reason** (recorded). A contract that names no endpoints is not compared (the UI says so).
+* **Merge-order guard** (on `POST /api/tasks/:id/approve-merge`): a consumer cannot be merged until its provider is `done` (merged): `409 {merge_order_blocked, override_required, provider_task_id}`. The only way around is a typed `override_reason` (>= 8 characters; the ordinary approval note is *not* an override). A merge that goes through with an override is recorded in `task_artifacts` (kind `notes`, `type: merge_order_override`, with the reason, task and provider status), in `approvals` (`MERGE-ORDER OVERRIDE: <reason>`) and in the task log. No override row is written when none was needed.
+* **Failure**: a failed/rejected provider fails its approved consumers with `not run: provider step #N ... is failed` and the feature becomes `failed`. **Retry step** creates a NEW pending task (the old one is kept as history, `superseded_by`), re-queues dependants that were "not run", and needs a fresh start approval. **Cancel** (reason) rejects steps that have not started; running ones are left alone.
+* **Safety**: every step's service must be inside the authorized roots (`repo.assertUsable`) at creation; nothing is created on refusal. Deleting: a service with step history cannot be unregistered (archive it); a project is refused while it owns a feature with unfinished steps in other projects; once finished, deleting a project removes its rows and detaches its steps/artifacts from other projects' history (their tasks stay, without the feature link).
+* **UI**: `#/features` (list + **New feature** modal with provider/consumer step editors) and `#/features/:id` (step graph, **Start**, contract versions + propose/approve, drift card, provider's actual API, **Merge order** with the **Merge anyway...** override dialog: textarea, button disabled until >= 8 characters, no native dialogs). The task page shows a `feature #N role` chip and opens the same dialog when a merge is refused by the guard.
+* **API** (`/api/features...`, never under `/api/chat`): see the table. Statuses: `contract_pending`, `planned`, `running`, `contract_drift`, `review`, `done`, `failed`, `cancelled`.
+* **Not done (deliberately)**: LLM-drafted contracts / feature planning from a free-text brief (the contract is human-written or accepted from the provider's extracted API), merging a whole feature with one click (every merge stays a separate human click), 3-way dependencies between consumers (all consumers depend on the provider only).
+
 ## Dashboard UI (no build step)
 
 Plain ES modules in `public/` (`index.html`, `style.css`, `app.js`, `js/*.js`), CSS custom properties, dark/light via `prefers-color-scheme` (toggle in the sidebar footer), no framework.
@@ -361,6 +376,8 @@ All endpoints are on `http://127.0.0.1:<port>`. POSTs need `Content-Type: applic
 | `POST /api/conversations/:id/messages` | `{content, think?}` | SSE stream: `meta`, `token`, `thinking`, `done` / `error`; 409 `busy` while another answer streams |
 | `GET /api/projects/:id/cursor-rules`, `GET .../cursor-rules/preview?service_id=` | - | per-service status; read-only preview with diffs + digest |
 | `POST /api/projects/:id/cursor-rules/optin`, `POST .../cursor-rules/generate` | `{service_id, enabled}`; `{service_id, approve: true, digest}` | opt-in per service; commit on a new review branch + review task (409/400 without opt-in/approval) |
+| `GET/POST /api/features`, `GET /api/features/:id`, `GET .../merge-plan` | `{project_id, title, brief?, contract?, steps:[{project_id?, service_id, title, prompt, engine, files?, plan_first?, ...}]}` (2..8 steps; step 1 = provider) | cross-repo features: list (`?project_id=` matches owner or any step), create (nothing starts), detail (steps, contracts, actuals, drift, merge order, overrides, graph) |
+| `POST /api/features/:id/{contract,approve-contract,accept-actual,ignore-drift,start,retry-step,cancel}` | `{content}`; `{version?}`; -; `{reason}` (>= 8 chars); `{reason?}`; `{task_id}`; `{reason}` | contract lifecycle, drift resolution, start approval for all pending steps, retry as a new pending task, cancel |
 | `GET /api/mentions/suggest?q=&project_id=` | - | autocomplete items (projects, services, `@svc:` files) |
 | `POST /api/mentions/resolve` | `{text, project_id?}` | parsed + resolved mentions, unresolved with candidates |
 | `GET /api/projects[?archived=1]` | - | list |
@@ -385,7 +402,7 @@ All endpoints are on `http://127.0.0.1:<port>`. POSTs need `Content-Type: applic
 | `GET /api/tasks/:id/diff` | - | `{stat, diff, truncated, note}` of `<default branch>...branch` |
 | `POST /api/tasks/:id/approve-start` / `reject-start` | `{reason?}` / `{reason}` | `pending` -> `approved` / `rejected` |
 | `POST /api/tasks/:id/approve-escalation` / `reject-escalation` | `{reason?}` / `{reason}` | from `awaiting_escalation` |
-| `POST /api/tasks/:id/approve-merge` / `reject-merge` | `{reason?}` / `{reason}` | from `review`: guarded `git merge --no-ff` in the task's project / `rejected` |
+| `POST /api/tasks/:id/approve-merge` / `reject-merge` | `{reason?, override_reason?}` / `{reason}` | from `review`: guarded `git merge --no-ff` in the task's project (a feature consumer is refused with 409 until its provider is merged, unless a typed `override_reason` is sent) / `rejected` |
 | `POST /api/tasks/:id/cancel` | - | kill the running task (ends `failed: cancelled by user`) |
 
 Example:

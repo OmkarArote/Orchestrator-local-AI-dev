@@ -34,7 +34,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const setVal = (sel, v) => `(() => { const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return false; e.value = ${JSON.stringify(v)}; e.dispatchEvent(new Event('input', {bubbles:true})); return true; })()`;
     const clickText = (sel, text) => `(() => { const e = [...document.querySelectorAll(${JSON.stringify(sel)})].find((x) => x.textContent.trim().startsWith(${JSON.stringify(text)}) && !x.disabled); if (!e) return false; e.click(); return true; })()`;
 
-    for (const h of ['#/projects', '#/projects/1/services', '#/projects/1/deps', '#/projects/1/context', '#/projects/1/memory', '#/projects/1/sequences', '#/projects/1/settings', '#/tasks', '#/chat', '#/tasks/1?nostream=1', '#/tasks/1?nostream=1&tab=diff', '#/models'])
+    for (const h of ['#/projects', '#/projects/1/services', '#/projects/1/deps', '#/projects/1/context', '#/projects/1/memory', '#/projects/1/sequences', '#/projects/1/settings', '#/tasks', '#/chat', '#/features', '#/tasks/1?nostream=1', '#/tasks/1?nostream=1&tab=diff', '#/models'])
       await step('route ' + h, async () => { await go(h); await waitFor("document.querySelector('#main') && document.querySelector('#main').children.length > 0 && ![...document.querySelectorAll('#main .callout.bad')].some((x) => x.offsetParent !== null)", 'render'); });
     await step('live log stream (SSE) renders', async () => { await go('#/tasks/1'); await waitFor("document.querySelectorAll('.term-line').length > 3", 'log lines'); });
     await step('new project via modal', async () => {

@@ -1,5 +1,6 @@
 // Tasks: list + detail (live terminal log, coloured diff, approvals, overrides, routing/plan/review cards, new-task modal).
 import { el, clear, api, badge, chip, statusBadge, empty, skeletonLines, field, select, modal, confirmDialog, promptDialog, toast, toastError, busy, hhmmss, copyText, shortPath } from './ui.js';
+import { overrideDialog } from './features.js';
 import { S, loadTasks, loadMem, loadServices, loadProjects, project, projName, activeServices, ACTIVE_STATUSES, setProjectFilter } from './state.js';
 
 const isCloud = (t) => t.engine !== 'local';
@@ -10,6 +11,7 @@ export function taskBadges(t) {
   const out = [badge(t.engine === 'local' ? 'LOCAL' : t.engine === 'cursor' ? '\u2601 CURSOR' : 'AUTO', `e-${t.engine} nodot`)];
   if (isCloud(t)) out.push(chip(t.model_used ? `${t.model || 'auto'} \u2192 ${t.model_used}` : t.model || 'auto'));
   if (t.service_name) out.push(chip('svc: ' + t.service_name));
+  if (t.feature_id) out.push(chip(`feature #${t.feature_id} ${t.feature_role || ''}`.trim(), '', 'Part of a cross-repo feature (contract-first, merge-order guarded)'));
   if (t.routing_state === 'routing') out.push(badge('routing\u2026', 's-pending'));
   else if (t.routing_source) out.push(chip('routed: ' + t.routing_source));
   if (t.supervised) out.push(badge('SUPERVISED', 's-awaiting_escalation'));
@@ -210,7 +212,7 @@ async function renderDetail(pane, id, { stream, tab: startTab }) {
       const cm = typeof ask === 'function' ? ask() : ask;
       if (cm && !(await confirmDialog({ title: label, message: cm, confirmText: label, danger }))) return;
       btn.disabled = true;
-      try { await api(`/tasks/${t.id}/${path}`, b); delete ovr[t.id]; delete planEdit[t.id]; toast(`${label}: done`, 'ok'); } catch (er) { toastError(er); }
+      try { await api(`/tasks/${t.id}/${path}`, b); delete ovr[t.id]; delete planEdit[t.id]; toast(`${label}: done`, 'ok'); } catch (er) { if (er.data && er.data.override_required) await overrideDialog({ taskId: t.id, providerTaskId: er.data.provider_task_id, providerStatus: er.data.provider_status, message: er.message }); else toastError(er); }
       await loadTasks(); draw(true); if (tab === 'diff') loadDiff();
     } }));
     const base = p ? p.default_branch : 'base'; const sup = t.supervised;

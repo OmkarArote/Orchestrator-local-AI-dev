@@ -14,3 +14,4 @@ alwaysApply: false
 - Authorized roots only: resolve repos through `repo.assertUsable(service)` (realpath vs roots) before reading or writing; never follow symlinks out of a repo.
 - The real DB: only `lib/db.js` opens a database, via `cfg.DB_PATH`; `config.js` refuses the default `data/orchestrator.db` unless the entry is `node server.js` (tests/scripts/`node -e` must set `ORCH_DB`; `test/m15-db-guard.test.js`).
 - Chat/mention retrieval is read-only (git object database, pinned commit, deny list, redaction); keep it that way.
+- Cross-repo features (`lib/features.js`): the merge-order guard in `approve-merge` (consumer not before its provider; only a typed `override_reason` lifts it, and the override is recorded) and the contract gate in `runner.depState` are safety rules: never bypass them, never auto-approve a contract, start or merge.

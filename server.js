@@ -25,6 +25,7 @@ const opener = require('./lib/open');
 const models = require('./lib/models');
 const registry = require('./lib/registry');
 const chat = require('./lib/chat');
+const features = require('./lib/features');
 
 const ALLOWED_HOSTS = new Set([`127.0.0.1:${cfg.PORT}`, `localhost:${cfg.PORT}`]);
 
@@ -415,6 +416,7 @@ async function serviceApi(req, res, url) {
 
 chat.setContextProvider(require('./lib/chat-context').provider); // @project / @service mentions (read-only context)
 const chatApi = require('./lib/chat-api')({ sendJson, fail, readJson });
+const featuresApi = require('./lib/features-api')({ sendJson, fail, readJson, validateTask, mergePlan: (g) => mergePlan(g) });
 
 async function memoryApi(req, res, url) {
   const m = url.pathname.match(/^\/api\/memory-proposals(?:\/(\d+)\/(update|approve|reject))?$/);
@@ -595,6 +597,7 @@ async function api(req, res, url) {
   }
   if (url.pathname.startsWith('/api/projects/') && /^\/api\/projects\/\d+\/(services|context|route|groups|deps|cursor-rules)/.test(url.pathname)) return projectSubApi(req, res, url);
   if (url.pathname.startsWith('/api/groups')) return groupApi(req, res, url);
+  if (url.pathname === '/api/features' || url.pathname.startsWith('/api/features/')) return featuresApi(req, res, url);
   if (url.pathname.startsWith('/api/services/')) return serviceApi(req, res, url);
   if (url.pathname.startsWith('/api/memory-proposals')) return memoryApi(req, res, url);
   if (url.pathname.startsWith('/api/conversations') || url.pathname === '/api/llm/info' || url.pathname.startsWith('/api/mentions/')) return chatApi(req, res, url);
@@ -740,13 +743,23 @@ async function api(req, res, url) {
     case 'approve-merge': {
       if (task.status !== 'review') return fail(res, 409, `cannot merge: status is '${task.status}' (needs 'review')`);
       if (task.supervised) return fail(res, 409, 'task is supervised (hands-on session open): click Release first so the check runs and the current worktree state is committed');
+      // cross-repo features: a consumer cannot be merged before its provider (contract-first). Only a typed override_reason (>= 8 chars) lifts it; it is recorded.
+      const order = features.mergeGuard(task);
+      const overrideReason = String(body.override_reason ?? '').trim().slice(0, 2000);
+      if (order && overrideReason.length < features.MIN_OVERRIDE_REASON) {
+        store.addEvent(id, 'system', `merge blocked by feature merge order: ${order.message}`);
+        return fail(res, 409, `${order.message}. Merge the provider first, or send a typed override_reason (at least ${features.MIN_OVERRIDE_REASON} characters) to override; the reason is recorded.`,
+          { merge_order_blocked: true, override_required: true, feature_id: order.feature_id, provider_task_id: order.provider_task_id, provider_status: order.provider_status });
+      }
       const r = await mergeTask(task);
       if (!r.ok) {
         store.addEvent(id, 'error', `merge refused/failed: ${r.message}`);
         return fail(res, 409, r.message);
       }
       if (!store.transition(id, 'review', 'done', { result_summary: `${task.result_summary || ''}; ${r.message}` })) return fail(res, 409, 'status changed during merge');
-      store.addApproval(id, 'merge', 'approved', reason);
+      if (order) { features.recordOverride(task, order, overrideReason); store.addApproval(id, 'merge', 'approved', `MERGE-ORDER OVERRIDE: ${overrideReason}${reason ? ' | ' + reason : ''}`); }
+      else store.addApproval(id, 'merge', 'approved', reason);
+      features.refresh(task.feature_id);
       store.addEvent(id, 'git', r.message);
       store.addEvent(id, 'git', await removeWorktree(task));
       return sendJson(res, 200, { ...store.getTask(id), merge: r.message });

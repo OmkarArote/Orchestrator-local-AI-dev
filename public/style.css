@@ -177,3 +177,10 @@ pre.plain { background: var(--surface-2); border: 1px solid var(--line); border-
 .rules-file { border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; background: var(--surface); } .rules-file summary { cursor: pointer; }
 .rules-diff { margin: 6px 0 2px; max-height: 320px; overflow: auto; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface-2); border-radius: 6px; padding: 8px; }
 .rules-diff .d-add { display: block; background: var(--ok-soft); } .rules-diff .d-del { display: block; background: var(--bad-soft); } .rules-diff .d-ctx { display: block; color: var(--dim); } .rules-diff .d-gap { display: block; color: var(--dim); text-align: center; }
+/* cross-repo features */
+.feat-row { display: block; color: inherit; text-decoration: none; } .feat-row:hover { border-color: var(--accent, #6b8afd); }
+.feat-graph { display: grid; grid-template-columns: minmax(220px, 1fr) auto minmax(220px, 1fr); gap: 12px; align-items: center; }
+.feat-arrow { text-align: center; color: var(--dim); } .feat-arrow > div:first-child { font-size: 28px; line-height: 1; }
+.feat-node.provider { border-left: 3px solid var(--ok, #2da44e); } .feat-node.consumer { border-left: 3px solid var(--accent, #6b8afd); }
+.feat-pre { max-height: 260px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 760px) { .feat-graph { grid-template-columns: 1fr; } .feat-arrow > div:first-child { transform: rotate(90deg); } }

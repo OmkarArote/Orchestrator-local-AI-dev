@@ -16,12 +16,13 @@ console.log('stub-aider: starting');
 console.error('stub-aider: stderr line');
 if (/STUB_FAIL/.test(message)) { console.log('stub-aider: failing on request'); process.exit(1); }
 if (/STUB_SLOW/.test(message)) { setTimeout(() => process.exit(0), 600000); return; }
+const ap = message.match(/STUB_APPEND<<([\s\S]*?)>>/); // STUB_APPEND<<text with \\n>> writes that text instead of the default line (feature/contract tests)
 if (!/STUB_NOCHANGE/.test(message)) {
   const targets = files.length ? files : ['stub-aider-out.txt'];
   for (const f of targets) {
     const p = path.join(process.cwd(), f);
     fs.mkdirSync(path.dirname(p), { recursive: true });
-    fs.appendFileSync(p, `edited by stub-aider\n`);
+    fs.appendFileSync(p, ap ? ap[1].replace(/\\n/g, '\n') + '\n' : `edited by stub-aider\n`);
   }
 }
 console.log('stub-aider: done');
