@@ -9,11 +9,12 @@ Companion documents: [`docs/plans/t70-media-and-prompt-plan.md`](plans/t70-media
 
 | Item | Value |
 |---|---|
-| `main` (shipped) | M1-M5 + Final stage; **schema v5**; last code commit `c0f605c`; since then only documentation commits (this file, the plan copy, a README pointer) |
-| **M6 (attachments foundation)** | **implemented and green, NOT merged**. Open pull request: <https://github.com/OmkarArote/Orchestrator-local-AI-dev/pull/1>. Branch **`wip/m6-attachments`**: code `966cefb`, README count `8ffd986`, then a merge of current `main` (`2d7a5e2`) because a fast-forward is impossible. Schema **v6** exists only there. See section 1a |
-| Tests on `main` (`npm test`) | **356 tests, 356 pass, 0 fail, 0 skipped** (author machine; run once with `CI=1` and once without after the docs-only changes; 346-350 on a fresh clone or CI because private-fixture tests skip) |
-| Tests on `wip/m6-attachments` | **399 tests, 399 pass, 0 fail, 0 skipped** (author machine). Re-measured 2026-10-19 once with `CI=1` and once without, both 399/399/0. The previous note recorded 3x each flavour on `966cefb`; those repeats were not re-run this session. +43 tests vs `main` |
-| CI (GitHub Actions, ubuntu + macos) | `main` at `2d7a5e2` (docs only): **green on ubuntu and macos**. `wip/m6-attachments`: pull request #1 is open; the Actions run for `8ffd986` was **in progress** when this note was written, so the ubuntu and macos counts are **not recorded yet**. Do not merge until both are green and the maintainer confirms |
+| `main` (shipped) | M1-M6 merged (`13fa03a`, schema v6). M7+ is on branch `wip/m7-m14`, not merged |
+| **M7 (extractors)** | **implemented on `wip/m7-m14`, not merged**. Text, CSV summary, HTML, Office/EPUB/ODT, PDF (poppler / PDFKit / low-fidelity), tesseract OCR. `lib/media-tools.js` is the only spawner. No new schema |
+| Tests on this branch | **405 tests, 405 pass, 0 fail, 0 skipped**. Measured once with `CI=1` (`duration_ms` 38478) and once without (`duration_ms` 37894) |
+| **M6 (attachments foundation)** | **merged** in pull request #1 (`13fa03a` on `main`). Schema v6. See section 1a |
+| Tests on `main` before M7 | **399 tests, 399 pass, 0 fail, 0 skipped** on the author machine at the M6 merge. This branch is 405 |
+| CI (GitHub Actions, ubuntu + macos) | M6 pull request #1 was merged by the maintainer. This branch's CI has not been recorded yet |
 | Fresh clone / CI test counts differ from the author machine because the migration tests that need a private DB backup, and the live-Ollama test, skip there | |
 | Runtime | Node >= 22.5, **zero npm dependencies** (`node:sqlite`, `node:test`, global `fetch`), vanilla ES-module UI, no build step |
 
@@ -67,7 +68,7 @@ Companion documents: [`docs/plans/t70-media-and-prompt-plan.md`](plans/t70-media
 ---------------------------------------------------------------------------------------------------
 ## 2. Pending work (in order)
 
-Order: **land M6 (section 1a) -> M7 -> M8 -> M9 -> M10 -> M11 -> M12 -> M13 -> M14.** Estimates are judgment (focused dev-days incl. tests and review), not measurements. Every milestone ends with: full suite 3x with `CI=1` and 3x without (real numbers, capture the complete output of any failure), CI green on both OSes, README + this file + test counts updated, docs commit separate from code commits. Write a short plan and get approval first for anything that changes the schema, adds an endpoint family or touches fs/git safety (project rule).
+Order: **M7 (done on `wip/m7-m14`, not merged) -> M8 -> M9 -> M10 -> M11 -> M12 -> M13 -> M14.** Estimates are judgment (focused dev-days incl. tests and review), not measurements. Every milestone ends with: full suite 3x with `CI=1` and 3x without (real numbers, capture the complete output of any failure), CI green on both OSes, README + this file + test counts updated, docs commit separate from code commits. Write a short plan and get approval first for anything that changes the schema, adds an endpoint family or touches fs/git safety (project rule).
 
 ### M7 Extractors (3 d)
 * **Scope**: `lib/extract/{text,csv,zip-office,html,pdf,image}.js` + `lib/media-tools.js` becomes the **only spawner** of tesseract/ffmpeg/pdftotext/pdftoppm/whisper (via `lib/proc.js`, argv arrays, hard timeouts, output caps, scratch cwd, `nice`). Text (done in M6), CSV summary (header, row count, column types/min/max/top values, first N rows, never dump a big table), pure-Node ZIP/XML readers for docx/xlsx/pptx/odt/epub (`w:t`, `a:t`, shared strings, sheet cells; **`zlib.inflateRawSync(buf, {maxOutputLength})`**, entries read in memory by exact expected names, never extracted to disk), html (strip tags, drop script/style, never rendered), PDF text (poppler `pdftotext -layout` -> PDFKit helper -> low-fidelity pure-Node, labelled), scanned PDF/image OCR with tesseract + confidence (page cap, time cap), derivation cache in `attachment_derivations`, redaction + injection flag already provided by `exposeFor`. Replace `deriveText` with a dispatcher by kind/ext.
