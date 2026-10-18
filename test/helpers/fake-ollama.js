@@ -21,6 +21,7 @@ function startFakeOllama(opts = {}) {
     streamScript: null,        // streaming /api/chat: array (or (body) => array) of NDJSON objects; specials: {__delay:ms} {__hang:true} {__close:true} (destroy the socket mid-stream)
     streamPromptTokens: 42,    // prompt_eval_count of the default final chunk
     streamAborts: 0,           // streams whose client went away before the final chunk (the abort reached the upstream socket)
+    imageCalls: 0,
     streamsOpen: 0, streamsStarted: 0,
     requests: [],
     pullCalls: 0, deleteCalls: 0,
@@ -61,6 +62,7 @@ function startFakeOllama(opts = {}) {
       }
       if (u === '/api/delete') { state.deleteCalls++; return json(res, 200, {}); }
       if (u === '/api/chat' && body && body.stream === true) {
+        if ((body.messages || []).some((m) => Array.isArray(m.images) && m.images.length)) state.imageCalls++;
         state.streamsStarted++; state.streamsOpen++;
         res.on('close', () => { state.streamsOpen--; if (!res.writableFinished) state.streamAborts++; });
         const script = typeof state.streamScript === 'function' ? state.streamScript(body) : (state.streamScript || [

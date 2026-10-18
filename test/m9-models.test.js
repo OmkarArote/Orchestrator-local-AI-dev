@@ -4,7 +4,9 @@ const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const http = require('node:http');
+const os = require('node:os');
 const path = require('node:path');
+const { execFile } = require('node:child_process');
 const { startServer, makeRepo, ROOT } = require('./helpers/harness');
 
 function startFakeRegistry(sizes) {
@@ -77,16 +79,17 @@ describe('M9 roles, validation, consumers (pull DISABLED, default)', () => {
     assert.match((await validate('planning', 'ornith:9b', {})).warnings.join(), /no local consumer/);
     assert.match((await validate('routing', 'ornith:9b', { think: true })).warnings.join(), /strict JSON/);
     assert.equal((await validate('coding', 'ornith:9b', { num_ctx: '', temperature: null })).ok, true, 'empty values = model default');
-    assert.deepEqual((await S.get('/models/roles')).roles.map((r) => r.source), Array(9).fill('config'), 'validate never saves');
+    assert.deepEqual((await S.get('/models/roles')).roles.map((r) => r.source), Array(13).fill('config'), 'validate never saves');
     const bad = await set('coding', 'ornith:9b', { num_ctx: 300000 }, {}, { allowFail: true });
     assert.equal(bad.status, 400); assert.match(bad.json.error, /exceeds/);
   });
 
-  it('all 9 roles are stored; unwired roles are flagged; defaults come from config; installed models show in_use_by', async () => {
+  it('all 13 roles are stored; unwired roles are flagged; defaults come from config; installed models show in_use_by', async () => {
     const r0 = (await S.get('/models/roles')).roles;
-    assert.deepEqual(r0.map((r) => r.role), ['coding', 'planning', 'requirements', 'review', 'debugging', 'documentation', 'routing', 'memory', 'chat']);
-    assert.deepEqual(r0.filter((r) => r.wired).map((r) => r.role).sort(), ['chat', 'coding', 'memory', 'routing']);
-    assert.ok(r0.every((r) => r.model === 'ornith:9b' && r.source === 'config'));
+    assert.deepEqual(r0.map((r) => r.role), ['coding', 'planning', 'requirements', 'review', 'debugging', 'documentation', 'routing', 'memory', 'chat', 'image', 'video', 'audio', 'document']);
+    assert.deepEqual(r0.filter((r) => r.wired).map((r) => r.role).sort(), ['audio', 'chat', 'coding', 'document', 'image', 'memory', 'routing', 'video']);
+    assert.ok(r0.filter((r) => r.role !== 'audio').every((r) => r.model === 'ornith:9b' && r.source === 'config'));
+    assert.equal(r0.find((r) => r.role === 'audio').model, 'whisper');
     for (const role of ['planning', 'requirements', 'review', 'debugging', 'documentation']) await set(role, 'deepseek-ocr:latest', { temperature: 0.4 });
     const r1 = (await S.get('/models/roles')).roles;
     assert.equal(r1.find((r) => r.role === 'review').model, 'deepseek-ocr:latest'); assert.equal(r1.find((r) => r.role === 'review').wired, false);
@@ -141,11 +144,25 @@ describe('M9 roles, validation, consumers (pull DISABLED, default)', () => {
   it('default model setting applies to roles without an override; validated against installed models', async () => {
     assert.equal((await S.post('/models/default', { model: 'deepseek-ocr:latest' })).model, 'deepseek-ocr:latest');
     const r = (await S.get('/models/roles')).roles;
-    assert.ok(r.every((x) => x.model === 'deepseek-ocr:latest' && x.source === 'setting'));
+    assert.ok(r.filter((x) => x.role !== 'audio').every((x) => x.model === 'deepseek-ocr:latest' && x.source === 'setting'));
+    assert.equal(r.find((x) => x.role === 'audio').model, 'whisper');
     assert.equal((await S.api('POST', '/models/default', { model: 'ghost:1b' }, { allowFail: true })).status, 400);
     assert.equal((await S.get('/ollama/status')).default_model, 'deepseek-ocr:latest');
     await S.post('/models/default', { model: null });
     assert.ok((await S.get('/models/roles')).roles.every((x) => x.source === 'config'));
+  });
+
+  it('image and video need vision, document needs 8192 context, audio is the whisper preset', async () => {
+    assert.equal((await S.post('/models/roles', { role: 'image', model: 'ornith:9b' }, { allowFail: true })).status, 400);
+    assert.equal((await S.post('/models/roles', { role: 'image', model: 'deepseek-ocr:latest' })).model, 'deepseek-ocr:latest');
+    assert.equal((await S.post('/models/roles', { role: 'audio', model: 'ornith:9b' }, { allowFail: true })).status, 400);
+    const audio = await S.post('/models/roles', { role: 'audio', model: 'whisper' });
+    assert.equal(audio.model, 'whisper');
+    S.fake.state.models.push({ name: 'tiny:1b', model: 'tiny:1b', size: 1000, digest: 'sha256:ccc', details: { family: 'llama' }, capabilities: ['completion'], context_length: 2048 });
+    S.fake.state.show['tiny:1b'] = { capabilities: ['completion'], model_info: { 'llama.context_length': 2048 }, details: { family: 'llama' } };
+    assert.equal((await S.post('/models/roles', { role: 'document', model: 'tiny:1b' }, { allowFail: true })).status, 400);
+    await S.post('/models/roles/clear', { role: 'image' });
+    await S.post('/models/roles/clear', { role: 'audio' });
   });
 
   it('catalog: verified sizes, fit classes, installed flags; Download is disabled; verify = read-only registry GET', async () => {
@@ -249,5 +266,33 @@ describe('M9 guards', () => {
     }
     assert.deepEqual(offenders, []);
     assert.match(src('config.js'), /ALLOW_MODEL_PULL: env\.ORCH_ALLOW_MODEL_PULL === '1'/);
+    const img = [];
+    for (const f of fs.readdirSync(path.join(ROOT, 'lib'))) {
+      if (!f.endsWith('.js')) continue;
+      if (/\.images\s*=/.test(src(`lib/${f}`)) && f !== 'ollama.js') img.push(f);
+    }
+    assert.deepEqual(img, []);
+  });
+});
+
+describe('M10 vision images stay inside the Ollama adapter', () => {
+  it('moves images onto the user message and never leaves them as a top-level field', async () => {
+    const { startFakeOllama } = require('./helpers/fake-ollama');
+    const fake = await startFakeOllama();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orch-m10-'));
+    try {
+      const out = await new Promise((resolve, reject) => execFile(process.execPath, ['--no-warnings', '-e', `const { createAdapter } = require('./lib/ollama');
+        (async () => { const o = createAdapter({ base: ${JSON.stringify(fake.url)} });
+          const r = await o.chatStream({ model: 'deepseek-ocr:latest', messages: [{ role: 'user', content: 'see' }], images: ['AAAA'] }, {});
+          console.log(JSON.stringify({ ok: r.ok })); })().catch((e) => { console.error(e); process.exit(1); });`], {
+        cwd: ROOT, encoding: 'utf8',
+        env: { ...process.env, ORCH_DB: path.join(dir, 'o.db'), ORCH_LOG_DIR: path.join(dir, 'logs'), ORCH_WORKTREES: path.join(dir, 'wt'), OLLAMA_API_BASE: fake.url },
+      }, (err, stdout, stderr) => { if (err) reject(new Error(stderr || err.message)); else resolve(stdout); }));
+      assert.match(out, /"ok":true/);
+      const body = fake.state.requests.filter((q) => q.path === '/api/chat').at(-1).body;
+      assert.equal(body.images, undefined);
+      assert.deepEqual(body.messages.at(-1).images, ['AAAA']);
+      assert.equal(fake.state.imageCalls, 1);
+    } finally { await fake.close(); fs.rmSync(dir, { recursive: true, force: true }); }
   });
 });

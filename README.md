@@ -55,7 +55,7 @@ Localhost-only (Host/Origin checks, no auth, so do not expose the port), authori
 ### Development
 
 ```bash
-npm test            # 416 tests on the author machine (416 pass, 0 fail, 0 skipped; same with CI=1); fresh-clone/CI count is recorded after the pull-request run (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
+npm test            # 418 tests on the author machine (418 pass, 0 fail, 0 skipped; same with CI=1); fresh-clone/CI count is recorded after the pull-request run (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
 npm run doctor      # same as ./setup.sh
 ```
 
@@ -65,7 +65,7 @@ Issues and pull requests are welcome. License: MIT.
 
 ---
 
-## What's new (M1-M9)
+## What's new (M1-M10)
 
 * **M1 - Cursor usage counters** (schema v5): the old daily Cursor caps are gone; every Cursor run is counted per project/service (`GET /api/cursor/usage`). Cursor still runs only after an approve-start / approve-plan / approve-escalation click.
 * **M2 - Chat** (`#/chat`): conversations with the local Ollama model (streamed, read-only, no tools), model card, `ORCH_CHAT_NUM_CTX`.
@@ -76,6 +76,7 @@ Issues and pull requests are welcome. License: MIT.
 * **M7 - Extractors**: plain text, a CSV/TSV summary (never a full dump), HTML with scripts and styles dropped, Office/EPUB/ODT via an in-memory zip reader, PDF text (poppler, else a macOS PDFKit helper, else a labelled low-fidelity pass) and image OCR with tesseract. A missing tool answers 422 `tool_missing` with the install command. Nothing is installed by the app. Audio and video are still unsupported.
 * **M8 - Chat uploads**: the chat composer can attach, drop or paste a file (up to 8). Derived text is injected on that turn only, inside an untrusted `<attachment>` block and capped at 40% of the context budget. Later turns keep a one-line stub unless the message was pinned. History never sends an `images` field.
 * **M9 - Auto model choice**: a conversation or the chat/coding role can be set to `auto`. `lib/model-select.js` scores installed Ollama models only (strength, already loaded, size, fit) and explains the score. It never downloads. An empty set names the missing capability and a catalog suggestion. If a local task holds the machine and the best choice would swap, the result is `defer`. `routing` and `memory` stay on their fixed model. The last observed load time is stored in `settings_kv`.
+* **M10 - Media roles**: `image`, `video`, `audio` and `document` (13 roles). Image and video need `vision`. Document needs a context window of at least 8192. Audio is the whisper tool preset. With no vision model, an image stays as recognised text plus a notice. A vision model receives one scaled copy (768px, metadata removed) per message.
 * **Safety hardening**: the real database (`data/orchestrator.db`) is opened only by `node server.js` (override on purpose with `ORCH_ALLOW_DEFAULT_DB=1`); tests and scripts must set `ORCH_DB`.
 
 # Reference
@@ -183,10 +184,10 @@ Models page / `lib/models.js` / `lib/ollama.js` (the only Ollama client). **No m
 
 * `GET /api/ollama/status|models|catalog`: version, RAM, free disk, installed models (with the roles using them), and a catalog of recommended models with registry-verified sizes
   and a RAM-fit class (comfortable <= 35 % of RAM, tight <= 60 %, else too large). `POST /api/ollama/models/verify {name}` re-checks a size with a read-only registry manifest GET.
-* **Roles**: `coding planning requirements review debugging documentation routing memory chat` (an `embedding` role is allowed by the DB schema but not listed until something uses it). `GET/POST /api/models/roles`, `POST /api/models/roles/validate|clear`, `GET/POST /api/models/default`.
+* **Roles**: `coding planning requirements review debugging documentation routing memory chat image video audio document` (an `embedding` role is allowed by the DB schema but not listed until something uses it). `GET/POST /api/models/roles`, `POST /api/models/roles/validate|clear`, `GET/POST /api/models/default`.
   A role = model + options (`num_ctx`, `temperature`, `top_p`, `top_k`, `num_predict`, `think`, ...). Settings are **validated against `/api/tags` + `/api/show`**
   (installed, context window not exceeded, tools/thinking capability, `num_ctx` above the model's context needs `allow_large_ctx`). Precedence: role row > default-model setting > env (`ORCH_MODEL`...).
-  Wired today: `coding` (aider: `--model-settings-file` with `extra_params`, written only when options are configured), `routing`, `memory`, `chat` (dashboard Chat). The other roles are stored/validated for later.
+  Wired today: `coding` (aider: `--model-settings-file` with `extra_params`, written only when options are configured), `routing`, `memory`, `chat` (dashboard Chat), `image` and `video` (need `vision`; without one, chat keeps tesseract text and says so), `document` (needs `completion` and a context window of at least 8192), `audio` (the `whisper` tool preset, not an Ollama model). `too_large` is refused for the media roles; `tight` is a warning. Vision images are attached only inside `lib/ollama.js`.
 * **Pull / delete** (`POST /api/ollama/models/pull|delete`) exist but answer **403 `disabled`** unless `ORCH_ALLOW_MODEL_PULL=1`. Even then they need a disk check
   (free >= 1.25 x size + 5 GB) and an explicit request. The UI's Download buttons are disabled ("downloads disabled - enable later").
 * Verified with the installed `<your-model>`: aider auto-sizes its context (about 9k for a tiny prompt), so a role `num_ctx` acts as an override/cap. The `/v1` router endpoint cannot set `num_ctx` (only the Ollama API mode can).
@@ -397,6 +398,7 @@ The dashboard shows engine + model per task and a clear badge: **local** (green,
 | `ORCH_ATTACH_QUOTA_GB` | `5` | total attachment storage; an upload that would exceed it is refused (413 `quota`) |
 | `ORCH_ATTACH_GC_HOURS` | `24` | unreferenced attachments older than this are deleted by the hourly sweep (also at startup) |
 | `ORCH_ATTACH_RETENTION_DAYS` | `0` | `0` keeps linked attachments forever; `N > 0` also deletes attachments (and their links) older than N days; chat / task text is untouched |
+| `ORCH_WHISPER_MODEL` | unset | path to a ggml whisper file you already have. The audio role does not download one. See [Audio and video](#attachments-m6-foundation) |
 | `ORCH_GIT_CONFIG_NOSYSTEM` | unset | `1` makes the hardened git ignore the system git config |
 | `ORCH_TEST_ALLOW_FILE` | unset | **test-only**: allow `file://` remotes for import tests; never set in production |
 

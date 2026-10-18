@@ -74,7 +74,7 @@ describe('M12 chat: unit', () => {
       console.log(JSON.stringify({ a, b, roles: m.ROLES }));`, { ORCH_MODEL: 'ollama_chat/ornith:9b' });
     assert.equal(r.a.model, 'ornith:9b'); assert.equal(r.a.num_ctx, 16384); assert.equal(r.a.think, false);
     assert.equal(r.b.model, 'other:1b'); assert.equal(r.b.num_ctx, 4096); assert.equal(r.b.think, true); assert.deepEqual(r.b.sampling, { temperature: 0.3 });
-    assert.ok(r.roles.includes('chat') && !r.roles.includes('embedding') && r.roles.length === 9);
+    assert.ok(r.roles.includes('chat') && !r.roles.includes('embedding') && r.roles.length === 13);
   });
 
   it('context-provider hook: text goes into the system message, the manifest into meta + the stored message; provider errors never fail the chat', async () => {

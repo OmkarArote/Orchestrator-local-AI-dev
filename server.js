@@ -576,7 +576,7 @@ async function api(req, res, url) {
   }
   if (/^\/api\/models\/roles(?:\/(validate|clear))?$/.test(url.pathname)) {
     const act = url.pathname.split('/')[4];
-    if (req.method === 'GET' && !act) return sendJson(res, 200, { roles: models.listRoles(), note: 'only coding, routing, memory and chat have a local consumer today; the other roles are stored and validated for later' });
+    if (req.method === 'GET' && !act) return sendJson(res, 200, { roles: models.listRoles(), note: 'coding, routing, memory, chat and the media roles have a local consumer; planning and review are stored for later' });
     if (req.method !== 'POST') return fail(res, 405, 'method not allowed');
     const body = await readJson(req);
     const flags = { allowLargeCtx: body.allow_large_ctx === true };
