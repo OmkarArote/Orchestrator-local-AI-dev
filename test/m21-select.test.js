@@ -75,6 +75,12 @@ describe('M9 resolve over HTTP', () => {
     const asst = conv.messages.find((m) => m.role === 'assistant');
     assert.equal(asst.context.context.auto.model, 'ornith:9b');
     assert.equal(asst.context.context.auto.rule, 'auto');
+    const info = await S.get('/llm/info?model=auto');
+    assert.equal(info.model_name, 'ornith:9b');
+    assert.equal(info.auto.rule, 'auto');
+    assert.equal(info.error, undefined);
+    const updated = await S.post(`/conversations/${c.id}/update`, { model: 'auto' });
+    assert.equal(updated.model, 'auto');
     await sleep(10);
   });
 });
