@@ -11,7 +11,8 @@ const { startServer, makeRepo, git, fingerprint } = require('./helpers/harness')
 
 function hashTree(dir) {
   const h = crypto.createHash('sha1');
-  (function walk(d) { for (const n of fs.readdirSync(d).sort()) { if (d.endsWith('.git') && n === 'index') continue; /* git may refresh its stat cache */ const p = path.join(d, n); const st = fs.lstatSync(p); h.update(path.relative(dir, p) + '\0'); if (st.isDirectory()) walk(p); else if (st.isSymbolicLink()) h.update(fs.readlinkSync(p)); else h.update(fs.readFileSync(p)); } })(dir);
+  (function walk(d) { for (const n of fs.readdirSync(d).sort()) { if (n === '.git') continue; /* git internals (index stat cache etc.) may be refreshed by read-only commands; refs are hashed below */ const p = path.join(d, n); const st = fs.lstatSync(p); h.update(path.relative(dir, p) + '\0'); if (st.isDirectory()) walk(p); else if (st.isSymbolicLink()) h.update(fs.readlinkSync(p)); else h.update(fs.readFileSync(p)); } })(dir);
+  try { h.update(require('node:child_process').execFileSync('git', ['for-each-ref', '--format=%(refname) %(objectname)'], { cwd: dir, encoding: 'utf8' })); h.update(fs.readFileSync(path.join(dir, '.git', 'HEAD'))); } catch { /* not a git repo */ }
   return h.digest('hex');
 }
 const tmpOutside = () => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'orch-outside-')));

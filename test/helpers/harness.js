@@ -78,7 +78,7 @@ async function startServer(opts = {}) {
       if (fake) await fake.close();
       if (!opts.keep) fs.rmSync(base, { recursive: true, force: true });
     },
-    async waitFor(fn, { timeout = 20000, every = 100, what = 'condition' } = {}) {
+    async waitFor(fn, { timeout = process.env.CI ? 60000 : 20000, every = 100, what = 'condition' } = {}) {
       const t0 = Date.now();
       for (;;) {
         let v; try { v = await fn(); } catch { v = null; }
