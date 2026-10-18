@@ -115,7 +115,7 @@ export async function render(main) {
     return el('div', { className: 'card' },
       el('div', { className: 'head' }, el('h3', { className: 'ellipsis', title: m.name }, m.name), badge(m.fit_label, `fit-${m.fit} nodot`)),
       el('div', { className: 'row small' }, el('b', {}, `${m.weights_gb} GB`), m.kind === 'base' ? chip('base model') : null, m.installed ? badge('installed', 's-ok') : null),
-      el('div', { className: 'small dim mt' }, m.note), el('div', { className: 'row mt' }, ...m.roles.map((r) => chip(r))),
+      el('div', { className: 'small dim mt' }, m.note), el('div', { className: 'row mt' }, ...m.roles.map((r) => chip(r)), ...(m.strengths || []).map((s) => chip(s))),
       v ? el('div', { className: `small mt ${v.error || v.exists === false ? 't-bad' : 't-ok'}` }, v.error ? v.error : v.exists === false ? 'not found in the registry' : `registry: ${bytes(v.weights_bytes)} weights, ${bytes(v.total_bytes)} total`) : null,
       el('div', { className: 'row mt' }, ver, dl, c.download_enabled ? null : el('span', { className: 'tiny dim' }, 'downloads disabled \u2014 enable later')),
       pullJob && state.pull && state.pull.meta && state.pull.meta.name === m.name ? el('div', { className: 'small mt' }, `${state.pull.phase || 'downloading'} \u00B7 ${state.pull.percent}%`, el('div', { className: 'progress' }, el('i', { style: { width: `${state.pull.percent}%` } }))) : null);

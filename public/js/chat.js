@@ -167,16 +167,18 @@ export async function render(main, route) {
     if (!c) return clear(headBox);
     const modelName = c.model || (info && info.chat_defaults && info.chat_defaults.model) || '';
     const names = st.models.map((m) => m.name); if (modelName && !names.includes(modelName)) names.unshift(modelName);
-    const modelSel = select([['', `default (${info && info.chat_defaults ? info.chat_defaults.model : '?'})`], ...names.map((n) => [n, n])], c.model || '', { 'aria-label': 'Model', onchange: (e) => busy(e.currentTarget, () => updateConv({ model: e.currentTarget.value || null })) });
+    const modelSel = select([['', `default (${info && info.chat_defaults ? info.chat_defaults.model : '?'})`], ['auto', 'Auto'], ...names.map((n) => [n, n])], c.model || '', { 'aria-label': 'Model', onchange: (e) => busy(e.currentTarget, () => updateConv({ model: e.currentTarget.value || null })) });
     const ctxNow = (c.options && c.options.num_ctx) || (info && info.chat_defaults && info.chat_defaults.num_ctx) || 16384;
     const ctxMax = info && info.ctx && info.ctx.max;
     const ctxSel = select(CTX_CHOICES.filter((n) => !ctxMax || n <= ctxMax).map((n) => [String(n), `ctx ${fmtTok(n)}`]), String(ctxNow), { 'aria-label': 'Context window', title: 'num_ctx for this conversation (a different value reloads the model once)', onchange: (e) => busy(e.currentTarget, () => updateConv({ options: { ...(c.options || {}), num_ctx: Number(e.currentTarget.value) } })) });
     const caps = (info && info.model && info.model.capabilities) || [];
     const canThink = !info || !info.model || caps.includes('thinking');
     const think = el('input', { type: 'checkbox', checked: c.think, disabled: !canThink, 'aria-label': 'Thinking', onchange: (e) => busy(e.currentTarget, () => updateConv({ think: e.currentTarget.checked })) });
+    const lastAuto = (c.messages || []).slice().reverse().find((m) => m.role === 'assistant' && m.context && m.context.context && m.context.context.auto);
+    const autoChip = c.model === 'auto' ? el('span', { className: 'chip', title: lastAuto ? (lastAuto.context.context.auto.reason || []).join('; ') : 'Chooses an installed model for each message. Nothing is downloaded.', textContent: lastAuto ? `Auto \u2192 ${lastAuto.context.context.auto.model}` : 'Auto' }) : null;
     clear(headBox, el('div', { className: 'row' }, el('h2', { className: 'ellipsis grow', title: c.title, textContent: c.title || 'New chat' }),
       el('button', { className: 'btn sm sec', textContent: 'Rename', onclick: () => rename().catch(toastError) }), el('button', { className: 'btn sm sec', textContent: 'Delete', disabled: !!c.streaming, onclick: () => remove().catch(toastError) })),
-    el('div', { className: 'row mt' }, modelSel, ctxSel, el('label', { className: 'row small', title: canThink ? 'Let the model reason before answering (slower; the reasoning is shown in a collapsible block)' : 'This model has no thinking capability' }, think, 'Thinking')));
+    el('div', { className: 'row mt' }, modelSel, ctxSel, autoChip, el('label', { className: 'row small', title: canThink ? 'Let the model reason before answering (slower; the reasoning is shown in a collapsible block)' : 'This model has no thinking capability' }, think, 'Thinking')));
   }
   function drawThread() {
     const c = st.conv;

@@ -44,13 +44,16 @@ export async function newTaskModal(defaultProject, defaultService) {
   const files = el('textarea', { placeholder: 'one per line; relative to the service folder when a service is chosen', style: { minHeight: '60px' } });
   const check = el('input', { placeholder: 'blank = service / project default' });
   const engine = select([['local', 'local (aider + ollama, on this Mac)'], ['cursor', '\u2601 cursor (Cursor servers, uses Pro usage)'], ['auto', 'auto (local first, escalate to cursor)'], ['auto-route', 'auto-route (local model suggests; you confirm)']], 'local');
+  const localModel = select([['', 'default'], ['auto', 'auto']], '');
+  api('/ollama/models').then((r) => { for (const m of (r.models || [])) localModel.append(el('option', { value: m.name, textContent: m.name })); }).catch(() => {});
+  const localBox = el('div', {}, field('Local model', localModel, 'default uses the coding role; auto chooses an installed model and never downloads'));
   const cm = el('input', { placeholder: (S.cfg && S.cfg.cursor_default_model) || 'auto', list: 'cursor-models' }); const dl = el('datalist', { id: 'cursor-models' });
   api('/cursor/models').then((r) => dl.replaceChildren(...r.models.map((x) => el('option', { value: x.id, textContent: x.name })))).catch(() => {});
   const plan = el('input', { type: 'checkbox' }), esc = el('input', { type: 'checkbox' }), review = el('input', { type: 'checkbox' });
   const cursorBox = el('div', { className: 'callout warn stack mb' });
   const planL = el('label', { className: 'chk' }, plan, 'plan first (Cursor writes a plan; you approve it before any code is written)'), escL = el('label', { className: 'chk' }, esc, 'allow escalation to Cursor if local fails (still needs your click)');
   cursorBox.append(el('div', { className: 'small' }, '\u2601 Cursor runs on Cursor servers and uses your Pro usage.'), field('Cursor model', cm), planL, escL, dl);
-  const syncEngine = () => { const e = engine.value; cursorBox.style.display = e === 'local' ? 'none' : ''; escL.style.display = e === 'auto' || e === 'auto-route' ? '' : 'none'; planL.style.display = e === 'cursor' || e === 'auto-route' ? '' : 'none'; if (e === 'local') { plan.checked = false; esc.checked = false; } };
+  const syncEngine = () => { const e = engine.value; cursorBox.style.display = e === 'local' ? 'none' : ''; localBox.style.display = e === 'local' ? '' : 'none'; escL.style.display = e === 'auto' || e === 'auto-route' ? '' : 'none'; planL.style.display = e === 'cursor' || e === 'auto-route' ? '' : 'none'; if (e === 'local') { plan.checked = false; esc.checked = false; } };
   const syncProject = async () => {
     const p = project(pSel.value); await loadServices(pSel.value);
     svc.replaceChildren(...[['', activeServices(pSel.value).length ? '\u2014 choose a service \u2014' : 'no services yet \u2013 add one first'], ...(activeServices(pSel.value).length > 1 ? [['auto', 'auto (local model picks from the service map)']] : []), ...activeServices(pSel.value).map((s) => [String(s.id), `${s.name}${s.path && s.path !== '.' ? ' (' + s.path + ')' : ''}`])].map(([v, l]) => el('option', { value: v, textContent: l })));
@@ -65,13 +68,13 @@ export async function newTaskModal(defaultProject, defaultService) {
   const create = el('button', { className: 'btn primary', textContent: 'Create task', onclick: (e) => busy(e.currentTarget, async () => {
     msg.style.display = 'none';
     try {
-      const t = await api('/tasks', { project_id: pSel.value, title: title.value, prompt: prompt.value, files: files.value, check_cmd: check.value, engine: engine.value, model: cm.value, service_id: svc.value || undefined, allow_escalation: esc.checked, ai_review: review.checked, plan_first: plan.checked });
+      const t = await api('/tasks', { project_id: pSel.value, title: title.value, prompt: prompt.value, files: files.value, check_cmd: check.value, engine: engine.value, model: engine.value === 'local' ? localModel.value : cm.value, service_id: svc.value || undefined, allow_escalation: esc.checked, ai_review: review.checked, plan_first: plan.checked });
       m.close(); toast(`task #${t.id} created (waiting for your approval)`, 'ok'); await loadTasks(); location.hash = `#/tasks/${t.id}`;
     } catch (er) { msg.textContent = er.message; msg.style.display = ''; }
   }) });
   const m = modal({ title: 'New task', wide: true,
     body: el('div', {}, el('div', { className: 'form-grid' }, el('div', { className: 'full' }, field('Project', pSel)), el('div', { className: 'full' }, field('Title', title)), el('div', { className: 'full' }, field('Prompt', prompt)),
-      field('Service', svc, 'the local model can pick it from the service map'), field('Check command', check), el('div', { className: 'full' }, field('Files', files, 'aider edits these; cursor gets them as a hint')), el('div', { className: 'full' }, field('Engine', engine))),
+      field('Service', svc, 'the local model can pick it from the service map'), field('Check command', check), el('div', { className: 'full' }, field('Files', files, 'aider edits these; cursor gets them as a hint')), el('div', { className: 'full' }, field('Engine', engine)), localBox),
       cursorBox, el('label', { className: 'chk' }, review, 'advisory AI review by Cursor after checks pass (uses 1 Cursor call; never blocks merge)'), msg),
     footer: [el('button', { className: 'btn sec', textContent: 'Cancel', onclick: () => m.close() }), create] });
 }
@@ -144,7 +147,8 @@ function routingCard(t) {
     s.multi_service ? el('div', { className: 'callout warn' }, el('b', {}, 'Looks multi-service. '), s.hint, s.candidates && s.candidates.length ? ` Candidates: ${s.candidates.join(', ')}.` : '') : null,
     el('div', { className: 'small dim' }, `policy: ${s.policy.rule}`), el('div', { className: 'small dim' }, `reason: ${s.reason}`),
     r.fallback_reason ? el('div', { className: 'small t-bad' }, `fallback to keyword matching: ${r.fallback_reason}`) : null,
-    r.llm ? el('div', { className: 'small dim' }, `local model ${r.llm.model} via ${r.llm.api}: ${r.llm.ms} ms, ${r.llm.prompt_tokens ?? '?'} prompt tokens${r.llm.error ? ' | problem: ' + r.llm.error : ''}`) : null);
+    r.llm ? el('div', { className: 'small dim' }, `local model ${r.llm.model} via ${r.llm.api}: ${r.llm.ms} ms, ${r.llm.prompt_tokens ?? '?'} prompt tokens${r.llm.error ? ' | problem: ' + r.llm.error : ''}`) : null,
+    s.local_model ? el('div', { className: 'small' }, `local model: ${s.local_model.rule} \u2192 ${s.local_model.model || 'none'}`) : null);
 }
 function overrideForm(t, o, rerender) {
   const svcs = activeServices(t.project_id);

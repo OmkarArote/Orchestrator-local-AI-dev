@@ -55,7 +55,7 @@ Localhost-only (Host/Origin checks, no auth, so do not expose the port), authori
 ### Development
 
 ```bash
-npm test            # 408 tests on the author machine (408 pass, 0 fail, 0 skipped; same with CI=1); fresh-clone/CI count is recorded after the pull-request run (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
+npm test            # 416 tests on the author machine (416 pass, 0 fail, 0 skipped; same with CI=1); fresh-clone/CI count is recorded after the pull-request run (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
 npm run doctor      # same as ./setup.sh
 ```
 
@@ -65,7 +65,7 @@ Issues and pull requests are welcome. License: MIT.
 
 ---
 
-## What's new (M1-M8)
+## What's new (M1-M9)
 
 * **M1 - Cursor usage counters** (schema v5): the old daily Cursor caps are gone; every Cursor run is counted per project/service (`GET /api/cursor/usage`). Cursor still runs only after an approve-start / approve-plan / approve-escalation click.
 * **M2 - Chat** (`#/chat`): conversations with the local Ollama model (streamed, read-only, no tools), model card, `ORCH_CHAT_NUM_CTX`.
@@ -75,6 +75,7 @@ Issues and pull requests are welcome. License: MIT.
 * **M6 - Attachments foundation** (schema v6): safe storage for uploaded images, PDFs, Office/EPUB documents, text/CSV/JSON, audio and video (`POST /api/attachments`, see [Attachments](#attachments-m6-foundation)). Content is identified from its bytes, capped, deduplicated and kept owner-only; a model only ever sees *derived text* wrapped as untrusted data.
 * **M7 - Extractors**: plain text, a CSV/TSV summary (never a full dump), HTML with scripts and styles dropped, Office/EPUB/ODT via an in-memory zip reader, PDF text (poppler, else a macOS PDFKit helper, else a labelled low-fidelity pass) and image OCR with tesseract. A missing tool answers 422 `tool_missing` with the install command. Nothing is installed by the app. Audio and video are still unsupported.
 * **M8 - Chat uploads**: the chat composer can attach, drop or paste a file (up to 8). Derived text is injected on that turn only, inside an untrusted `<attachment>` block and capped at 40% of the context budget. Later turns keep a one-line stub unless the message was pinned. History never sends an `images` field.
+* **M9 - Auto model choice**: a conversation or the chat/coding role can be set to `auto`. `lib/model-select.js` scores installed Ollama models only (strength, already loaded, size, fit) and explains the score. It never downloads. An empty set names the missing capability and a catalog suggestion. If a local task holds the machine and the best choice would swap, the result is `defer`. `routing` and `memory` stay on their fixed model. The last observed load time is stored in `settings_kv`.
 * **Safety hardening**: the real database (`data/orchestrator.db`) is opened only by `node server.js` (override on purpose with `ORCH_ALLOW_DEFAULT_DB=1`); tests and scripts must set `ORCH_DB`.
 
 # Reference
@@ -123,7 +124,7 @@ Files:
 | `lib/fsguard.js`, `lib/roots.js` | authorized-folder path guard (canonical paths, symlink-safe); `removeOwnedDir` is the only recursive delete |
 | `lib/safegit.js` | hardened git (execFile only, env allowlist, no hooks, https/ssh only, redaction) |
 | `lib/service-ops.js`, `lib/importer.js`, `lib/jobs.js`, `lib/services.js`, `lib/repo.js` | service CRUD, create/add-existing, clone import jobs, repo resolution |
-| `lib/ollama.js`, `lib/models.js`, `lib/registry.js`, `lib/model-catalog.json` | Ollama client, roles/validation/catalog, read-only registry lookups |
+| `lib/ollama.js`, `lib/models.js`, `lib/model-select.js`, `lib/registry.js`, `lib/model-catalog.json` | Ollama client, roles/validation/catalog, auto selector, read-only registry lookups |
 | `scripts/` | `dev-demo.js`, `shot.sh`, `ui-smoke.sh` (isolated demo instance, screenshots, UI smoke test) |
 | `lib/paths.js` | branch / worktree path helpers |
 | `lib/context.js`, `lib/memory.js`, `lib/router.js`, `lib/settings.js`, `lib/deps.js`, `lib/open.js` | project context bundle, memory proposals, service/engine router, per-project settings, service dependencies, "Open in Cursor" |
