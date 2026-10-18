@@ -77,6 +77,7 @@ module.exports = {
   MEMORY_PROPOSALS: env.ORCH_MEMORY_PROPOSALS !== '0',
   MEMORY_TIMEOUT_MS: num(env.ORCH_MEMORY_TIMEOUT_MS, 180000),
   MEMORY_NUM_CTX: num(env.ORCH_MEMORY_NUM_CTX, 8192),
+  CHAT_NUM_CTX: num(env.ORCH_CHAT_NUM_CTX, 16384),              // dashboard chat context window (the `chat` role option num_ctx overrides it); one shared value avoids model reloads
   EMPTY_CHECK: 'git diff --check',                                          // default check for empty-template projects
   MAX_REVIEW_DIFF_BYTES: 80 * 1024,
   MAX_LINE: 4000,

@@ -3,7 +3,7 @@ import { el, clear, api, badge, chip, bytes, empty, skeletonCards, field, select
 import { loadOllama } from './state.js';
 
 const ROLE_HELP = {
-  coding: 'aider (local engine) edits files', routing: 'task router: picks service + engine', memory: 'drafts MEMORY.md proposals',
+  coding: 'aider (local engine) edits files', chat: 'dashboard Chat page (default model + num_ctx 16384, thinking off)', routing: 'task router: picks service + engine', memory: 'drafts MEMORY.md proposals',
   planning: 'stored only (planning runs on Cursor)', requirements: 'stored only (no local consumer yet)', review: 'stored only (review runs on Cursor)', debugging: 'stored only', documentation: 'stored only',
 };
 const OPT_FIELDS = [['num_ctx', 'num_ctx', 'int', 'context window (tokens)'], ['temperature', 'temperature', 'num', '0 - 2'], ['top_p', 'top_p', 'num', '0 - 1'], ['top_k', 'top_k', 'int', '>= 0'], ['repeat_penalty', 'repeat_penalty', 'num', '0.5 - 2'], ['num_predict', 'num_predict', 'int', 'max new tokens'], ['seed', 'seed', 'int', 'optional']];
@@ -50,6 +50,9 @@ export async function render(main) {
     el('div', { className: 'head' }, el('h3', { className: 'ellipsis', title: m.name }, m.name), m.loaded ? badge('loaded', 's-running') : null, m.is_default ? badge('default', 's-review') : null),
     el('div', { className: 'row small dim' }, m.parameter_size || '', m.quantization ? ` \u00B7 ${m.quantization}` : '', ` \u00B7 ${bytes(m.size)}`, m.family ? ` \u00B7 ${m.family}` : ''),
     el('div', { className: 'row mt' }, ...(m.capabilities || []).map((c) => chip(c)), m.context_length ? chip(`ctx ${m.context_length.toLocaleString()}`, 'mono') : null),
+    m.running ? el('div', { className: 'callout ok small mt', title: 'from Ollama /api/ps: what is in memory right now' }, el('strong', { textContent: 'Running now ' }),
+      [m.running.context_length ? `ctx ${m.running.context_length.toLocaleString()} in use` : null, m.running.gpu_pct != null ? `${m.running.gpu_pct}% on GPU${m.running.gpu_pct < 100 ? ' (rest on CPU)' : ''}` : null,
+        m.running.size ? `${bytes(m.running.size)} in memory` : null, m.running.expires_at ? `unloads ${new Date(m.running.expires_at).toLocaleTimeString([], { hour12: false })}` : null].filter(Boolean).join(' \u00B7 ')) : null,
     m.defaults && Object.keys(m.defaults).length ? el('div', { className: 'small dim mt' }, 'model defaults: ' + Object.entries(m.defaults).map(([k, v]) => `${k} ${v}`).join(', ')) : null,
     m.in_use_by.length ? el('div', { className: 'row mt' }, el('span', { className: 'small dim' }, 'used by'), ...m.in_use_by.map((u) => chip(u.role, u.source === 'role' ? 'e-local' : ''))) : null,
     m.show_error ? el('div', { className: 'small t-bad mt' }, m.show_error) : null);

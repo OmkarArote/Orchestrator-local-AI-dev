@@ -23,6 +23,7 @@ const settingsLib = require('./lib/settings');
 const opener = require('./lib/open');
 const models = require('./lib/models');
 const registry = require('./lib/registry');
+const chat = require('./lib/chat');
 
 const ALLOWED_HOSTS = new Set([`127.0.0.1:${cfg.PORT}`, `localhost:${cfg.PORT}`]);
 
@@ -385,6 +386,8 @@ async function serviceApi(req, res, url) {
   return sendJson(res, 200, svc.serviceView(project, store.getService(service.id)));
 }
 
+const chatApi = require('./lib/chat-api')({ sendJson, fail, readJson });
+
 async function memoryApi(req, res, url) {
   const m = url.pathname.match(/^\/api\/memory-proposals(?:\/(\d+)\/(update|approve|reject))?$/);
   if (!m) return fail(res, 404, 'unknown endpoint');
@@ -541,7 +544,7 @@ async function api(req, res, url) {
   }
   if (/^\/api\/models\/roles(?:\/(validate|clear))?$/.test(url.pathname)) {
     const act = url.pathname.split('/')[4];
-    if (req.method === 'GET' && !act) return sendJson(res, 200, { roles: models.listRoles(), note: 'only coding, routing and memory have a local consumer today; the other roles are stored and validated for later' });
+    if (req.method === 'GET' && !act) return sendJson(res, 200, { roles: models.listRoles(), note: 'only coding, routing, memory and chat have a local consumer today; the other roles are stored and validated for later' });
     if (req.method !== 'POST') return fail(res, 405, 'method not allowed');
     const body = await readJson(req);
     const flags = { allowLargeCtx: body.allow_large_ctx === true };
@@ -566,6 +569,7 @@ async function api(req, res, url) {
   if (url.pathname.startsWith('/api/groups')) return groupApi(req, res, url);
   if (url.pathname.startsWith('/api/services/')) return serviceApi(req, res, url);
   if (url.pathname.startsWith('/api/memory-proposals')) return memoryApi(req, res, url);
+  if (url.pathname.startsWith('/api/conversations') || url.pathname === '/api/llm/info') return chatApi(req, res, url);
   if (url.pathname.startsWith('/api/projects')) return projectsApi(req, res, url);
   const m = url.pathname.match(/^\/api\/tasks(?:\/(\d+)(?:\/([a-z-]+))?)?$/);
   if (!m) return fail(res, 404, 'unknown endpoint');
@@ -798,6 +802,7 @@ server.listen(cfg.PORT, cfg.HOST, () => {
   console.log(`[${new Date().toISOString()}] orchestrator listening on http://${cfg.HOST}:${cfg.PORT} projects=${store.listProjects().length} schema=v${store.schemaVersion()} db=${cfg.DB_PATH}`);
   if (cfg.CURSOR_CAP_ENV_IGNORED.length) console.log(`[startup] NOTICE: ${cfg.CURSOR_CAP_ENV_IGNORED.join(', ')} ${cfg.CURSOR_CAP_ENV_IGNORED.length > 1 ? 'are' : 'is'} set but IGNORED: the Cursor daily caps were removed. Usage is only counted (GET /api/cursor/usage); every Cursor run still needs your approval click.`);
   try { const swept = serviceOps.sweepJournal(); if (swept.length) console.log(`[startup] journal sweep removed ${swept.length} leftover director${swept.length === 1 ? 'y' : 'ies'}: ${swept.map((x) => x.path).join(', ')}`); } catch (e) { console.error('[startup] journal sweep failed:', e.message); }
+  try { const stale = chat.recoverStale(); if (stale) console.log(`[startup] marked ${stale} interrupted chat answer(s) as error`); } catch (e) { console.error('[startup] chat recovery failed:', e.message); }
   runner.start();
 });
 for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { console.log(`${sig}: shutting down`); runner.stopCurrent(); server.close(); setTimeout(() => process.exit(0), 200); });

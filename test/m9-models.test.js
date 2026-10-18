@@ -77,15 +77,15 @@ describe('M9 roles, validation, consumers (pull DISABLED, default)', () => {
     assert.match((await validate('planning', 'ornith:9b', {})).warnings.join(), /no local consumer/);
     assert.match((await validate('routing', 'ornith:9b', { think: true })).warnings.join(), /strict JSON/);
     assert.equal((await validate('coding', 'ornith:9b', { num_ctx: '', temperature: null })).ok, true, 'empty values = model default');
-    assert.deepEqual((await S.get('/models/roles')).roles.map((r) => r.source), Array(8).fill('config'), 'validate never saves');
+    assert.deepEqual((await S.get('/models/roles')).roles.map((r) => r.source), Array(9).fill('config'), 'validate never saves');
     const bad = await set('coding', 'ornith:9b', { num_ctx: 300000 }, {}, { allowFail: true });
     assert.equal(bad.status, 400); assert.match(bad.json.error, /exceeds/);
   });
 
-  it('all 8 roles are stored; unwired roles are flagged; defaults come from config; installed models show in_use_by', async () => {
+  it('all 9 roles are stored; unwired roles are flagged; defaults come from config; installed models show in_use_by', async () => {
     const r0 = (await S.get('/models/roles')).roles;
-    assert.deepEqual(r0.map((r) => r.role), ['coding', 'planning', 'requirements', 'review', 'debugging', 'documentation', 'routing', 'memory']);
-    assert.deepEqual(r0.filter((r) => r.wired).map((r) => r.role).sort(), ['coding', 'memory', 'routing']);
+    assert.deepEqual(r0.map((r) => r.role), ['coding', 'planning', 'requirements', 'review', 'debugging', 'documentation', 'routing', 'memory', 'chat']);
+    assert.deepEqual(r0.filter((r) => r.wired).map((r) => r.role).sort(), ['chat', 'coding', 'memory', 'routing']);
     assert.ok(r0.every((r) => r.model === 'ornith:9b' && r.source === 'config'));
     for (const role of ['planning', 'requirements', 'review', 'debugging', 'documentation']) await set(role, 'deepseek-ocr:latest', { temperature: 0.4 });
     const r1 = (await S.get('/models/roles')).roles;

@@ -1,9 +1,10 @@
-// Entry point: hash router (#/projects, #/projects/:id/:tab, #/tasks, #/tasks/:id, #/models), sidebar, theme, background refresh.
+// Entry point: hash router (#/projects, #/projects/:id/:tab, #/tasks, #/tasks/:id, #/models, #/chat, #/chat/:id), sidebar, theme, background refresh.
 import { $, el, clear, badge, toast, closeAllModals } from './js/ui.js';
 import { S, loadProjects, loadTasks, loadMem, loadCfg, loadCursor, loadOllama, onChange, ACTIVE_STATUSES } from './js/state.js';
 import * as projectsView from './js/projects.js';
 import * as tasksView from './js/tasks.js';
 import * as modelsView from './js/models.js';
+import * as chatView from './js/chat.js';
 
 // legacy deep links (#project=3&task=7 / &panel=services) -> new routes
 (() => {
@@ -16,7 +17,7 @@ import * as modelsView from './js/models.js';
 
 const theme = localStorage.getItem('theme'); if (theme) document.documentElement.dataset.theme = theme;
 const qTheme = new URLSearchParams((location.hash.split('?')[1]) || '').get('theme'); if (qTheme === 'light' || qTheme === 'dark') document.documentElement.dataset.theme = qTheme; // deep link for screenshots (not persisted)
-const NAV = [['#/projects', '\u25A6', 'Projects', 'projects'], ['#/tasks', '\u2630', 'Tasks', 'tasks'], ['#/models', '\u25C8', 'Models', 'models']];
+const NAV = [['#/projects', '\u25A6', 'Projects', 'projects'], ['#/tasks', '\u2630', 'Tasks', 'tasks'], ['#/chat', '\u25C7', 'Chat', 'chat'], ['#/models', '\u25C8', 'Models', 'models']];
 
 function parseRoute() {
   const [pathPart, qs] = location.hash.slice(1).split('?');
@@ -29,7 +30,7 @@ async function route() {
   if (cleanup) { try { cleanup(); } catch { /* ignore */ } cleanup = null; }
   closeAllModals();
   const main = $('#main'); main.replaceChildren(); window.scrollTo(0, 0);
-  const view = { projects: projectsView, tasks: tasksView, models: modelsView }[r.area];
+  const view = { projects: projectsView, tasks: tasksView, models: modelsView, chat: chatView }[r.area];
   if (!view) { location.hash = '#/projects'; return; }
   renderNav();
   try { cleanup = (await view.render(main, r)) || null; } catch (e) { clear(main, el('div', { className: 'callout bad' }, `Could not render this page: ${e.message}`)); console.error(e); }

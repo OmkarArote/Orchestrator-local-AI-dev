@@ -10,7 +10,7 @@ function startFakeOllama(opts = {}) {
       { name: 'deepseek-ocr:latest', model: 'deepseek-ocr:latest', size: 6690000000, digest: 'sha256:bbb', modified_at: '2026-01-01T00:00:00Z', details: { family: 'deepseek-ocr', parameter_size: '3B', quantization_level: 'Q8_0' }, capabilities: ['completion', 'vision'], context_length: 8192 },
     ],
     show: opts.show || {
-      'ornith:9b': { parameters: 'temperature 0.6\ntop_k 20\ntop_p 0.95', template: '{{ .Prompt }}', details: { family: 'qwen35' }, model_info: { 'qwen35.context_length': 262144 }, capabilities: ['completion', 'tools', 'thinking'], thinking: { values: ['low', 'medium', 'high'] } },
+      'ornith:9b': { parameters: 'temperature 0.6\ntop_k 20\ntop_p 0.95', template: '{{ .Prompt }}', details: { family: 'qwen35' }, model_info: { 'general.architecture': 'qwen35', 'general.parameter_count': 9000000000, 'qwen35.context_length': 262144, 'qwen35.block_count': 32, 'qwen35.full_attention_interval': 4, 'qwen35.embedding_length': 4096, 'qwen35.attention.head_count': 16, 'qwen35.attention.head_count_kv': 4, 'qwen35.attention.key_length': 256, 'qwen35.attention.value_length': 256 }, capabilities: ['completion', 'tools', 'thinking'], thinking: { values: ['low', 'medium', 'high'] } },
       'deepseek-ocr:latest': { parameters: '', details: { family: 'deepseek-ocr' }, model_info: { 'deepseek2.context_length': 8192 }, capabilities: ['completion', 'vision'] },
     },
     loaded: [],
@@ -18,6 +18,10 @@ function startFakeOllama(opts = {}) {
     chatReply: null,           // (path, body) => string content; default = valid routing/memory JSON
     pullScript: null,          // array of NDJSON objects for /api/pull (or function)
     chatDelayMs: 0,
+    streamScript: null,        // streaming /api/chat: array (or (body) => array) of NDJSON objects; specials: {__delay:ms} {__hang:true} {__close:true} (destroy the socket mid-stream)
+    streamPromptTokens: 42,    // prompt_eval_count of the default final chunk
+    streamAborts: 0,           // streams whose client went away before the final chunk (the abort reached the upstream socket)
+    streamsOpen: 0, streamsStarted: 0,
     requests: [],
     pullCalls: 0, deleteCalls: 0,
   };
@@ -56,6 +60,23 @@ function startFakeOllama(opts = {}) {
         return res.end();
       }
       if (u === '/api/delete') { state.deleteCalls++; return json(res, 200, {}); }
+      if (u === '/api/chat' && body && body.stream === true) {
+        state.streamsStarted++; state.streamsOpen++;
+        res.on('close', () => { state.streamsOpen--; if (!res.writableFinished) state.streamAborts++; });
+        const script = typeof state.streamScript === 'function' ? state.streamScript(body) : (state.streamScript || [
+          ...(body.think ? [{ message: { role: 'assistant', content: '', thinking: 'Let me ' } }, { message: { role: 'assistant', content: '', thinking: 'think.' } }] : []),
+          { message: { role: 'assistant', content: 'Hello' }, done: false }, { message: { role: 'assistant', content: ' world' }, done: false },
+          { message: { role: 'assistant', content: '' }, done: true, done_reason: 'stop', prompt_eval_count: state.streamPromptTokens, eval_count: 2, load_duration: 5000000, total_duration: 9000000 }]);
+        res.writeHead(200, { 'Content-Type': 'application/x-ndjson' });
+        for (const line of script) {
+          if (line && line.__delay) { await new Promise((r) => setTimeout(r, line.__delay)); continue; }
+          if (line && line.__hang) { await new Promise((r) => res.on('close', r)); return; }
+          if (line && line.__close) { await new Promise((r) => setTimeout(r, 40)); res.socket.destroy(); return; } // let earlier chunks flush first
+          if (res.destroyed) return;
+          res.write(JSON.stringify(line) + '\n');
+        }
+        return res.end();
+      }
       if (u === '/api/chat' || u === '/v1/chat/completions') {
         if (state.chatDelayMs) await new Promise((r) => setTimeout(r, state.chatDelayMs));
         const user = ((body && body.messages) || []).map((m) => m.content).join('\n');

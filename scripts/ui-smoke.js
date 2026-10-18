@@ -34,7 +34,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const setVal = (sel, v) => `(() => { const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return false; e.value = ${JSON.stringify(v)}; e.dispatchEvent(new Event('input', {bubbles:true})); return true; })()`;
     const clickText = (sel, text) => `(() => { const e = [...document.querySelectorAll(${JSON.stringify(sel)})].find((x) => x.textContent.trim().startsWith(${JSON.stringify(text)}) && !x.disabled); if (!e) return false; e.click(); return true; })()`;
 
-    for (const h of ['#/projects', '#/projects/1/services', '#/projects/1/deps', '#/projects/1/context', '#/projects/1/memory', '#/projects/1/sequences', '#/projects/1/settings', '#/tasks', '#/tasks/1?nostream=1', '#/tasks/1?nostream=1&tab=diff', '#/models'])
+    for (const h of ['#/projects', '#/projects/1/services', '#/projects/1/deps', '#/projects/1/context', '#/projects/1/memory', '#/projects/1/sequences', '#/projects/1/settings', '#/tasks', '#/chat', '#/tasks/1?nostream=1', '#/tasks/1?nostream=1&tab=diff', '#/models'])
       await step('route ' + h, async () => { await go(h); await waitFor("document.querySelector('#main') && document.querySelector('#main').children.length > 0 && ![...document.querySelectorAll('#main .callout.bad')].some((x) => x.offsetParent !== null)", 'render'); });
     await step('live log stream (SSE) renders', async () => { await go('#/tasks/1'); await waitFor("document.querySelectorAll('.term-line').length > 3", 'log lines'); });
     await step('new project via modal', async () => {
@@ -61,6 +61,15 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await step('project settings save', async () => { await go('#/projects/1/settings'); await waitFor("document.querySelector('#main .btn.primary')", 'settings'); await ev(clickText('#main button', 'Save settings')); await waitFor("document.querySelector('.toast')", 'toast'); });
     await step('models: role edit modal', async () => { await go('#/models'); await waitFor("document.body.innerText.includes('Roles')", 'roles'); await ev(clickText('button', 'Edit')); await waitFor("document.querySelector('.modal')", 'modal'); });
     await step('models: download buttons disabled', async () => { await go('#/models'); await waitFor("[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Download')", 'catalog'); const bad = await ev("[...document.querySelectorAll('button')].filter((b) => b.textContent.trim() === 'Download' && !b.disabled).length"); if (bad) throw new Error(bad + ' enabled download buttons'); });
+    await step('chat: new chat, send, streamed answer rendered, model card, delete via modal', async () => {
+      await go('#/chat'); await waitFor("[...document.querySelectorAll('#main button')].some((b) => b.textContent.includes('New chat'))", 'chat page'); await ev(clickText('#main button', '+ New chat'));
+      await waitFor("document.querySelector('.chat-composer textarea')", 'composer'); await ev(setVal('.chat-composer textarea', 'hello **there**'));
+      await ev(clickText('.chat-composer button', 'Send'));
+      await waitFor("document.querySelector('.msg.assistant .bubble') && document.querySelector('.msg.assistant .bubble').textContent.includes('Hello world')", 'streamed answer', 8000);
+      await waitFor("document.querySelector('.chat-side').innerText.includes('Context window')", 'model card');
+      await waitFor("document.querySelector('.chat-item.on')", 'conversation listed');
+      await ev(clickText('.chat-head button', 'Delete')); await waitFor("document.querySelector('.modal')", 'confirm'); await ev(clickText('.modal button', 'Delete')); await waitFor("!document.querySelector('.chat-item')", 'deleted');
+    });
     await step('theme toggle', async () => { await ev(clickText('button', '\u25D0 Theme')); await waitFor("document.documentElement.dataset.theme", 'theme set'); });
     await step('Esc closes modal', async () => { await go('#/projects'); await ev(clickText('button', '+ New project')); await waitFor("document.querySelector('.modal')", 'open'); await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 }); await waitFor("!document.querySelector('.modal')", 'closed'); });
     if (remote) await step('approve & merge task #1 through the confirm modal', async () => {

@@ -52,7 +52,7 @@ Localhost-only (Host/Origin checks, no auth, so do not expose the port), authori
 ### Development
 
 ```bash
-npm test            # 295 tests, no network, no Ollama or Cursor needed (stubs/fakes)
+npm test            # 311 tests, no network, no Ollama or Cursor needed (stubs/fakes)
 npm run doctor      # same as ./setup.sh
 ```
 
@@ -157,23 +157,47 @@ Models page / `lib/models.js` / `lib/ollama.js` (the only Ollama client). **No m
 
 * `GET /api/ollama/status|models|catalog`: version, RAM, free disk, installed models (with the roles using them), and a catalog of recommended models with registry-verified sizes
   and a RAM-fit class (comfortable <= 35 % of RAM, tight <= 60 %, else too large). `POST /api/ollama/models/verify {name}` re-checks a size with a read-only registry manifest GET.
-* **Roles**: `coding planning requirements review debugging documentation routing memory`. `GET/POST /api/models/roles`, `POST /api/models/roles/validate|clear`, `GET/POST /api/models/default`.
+* **Roles**: `coding planning requirements review debugging documentation routing memory chat` (an `embedding` role is allowed by the DB schema but not listed until something uses it). `GET/POST /api/models/roles`, `POST /api/models/roles/validate|clear`, `GET/POST /api/models/default`.
   A role = model + options (`num_ctx`, `temperature`, `top_p`, `top_k`, `num_predict`, `think`, ...). Settings are **validated against `/api/tags` + `/api/show`**
   (installed, context window not exceeded, tools/thinking capability, `num_ctx` above the model's context needs `allow_large_ctx`). Precedence: role row > default-model setting > env (`ORCH_MODEL`...).
-  Wired today: `coding` (aider: `--model-settings-file` with `extra_params`, written only when options are configured), `routing`, `memory`. The other roles are stored/validated for later.
+  Wired today: `coding` (aider: `--model-settings-file` with `extra_params`, written only when options are configured), `routing`, `memory`, `chat` (dashboard Chat). The other roles are stored/validated for later.
 * **Pull / delete** (`POST /api/ollama/models/pull|delete`) exist but answer **403 `disabled`** unless `ORCH_ALLOW_MODEL_PULL=1`. Even then they need a disk check
   (free >= 1.25 x size + 5 GB) and an explicit request. The UI's Download buttons are disabled ("downloads disabled - enable later").
 * Verified with the installed `<your-model>`: aider auto-sizes its context (about 9k for a tiny prompt), so a role `num_ctx` acts as an override/cap. The `/v1` router endpoint cannot set `num_ctx` (only the Ollama API mode can).
 
+## Chat with the local model
+
+Chat page: conversations (SQLite, schema v5 tables `chat_conversations` / `chat_messages`) answered by the local Ollama model. **No tools, no file or repository access**: the model only sees the conversation.
+`lib/chat.js` (logic), `lib/chat-api.js` (HTTP), streaming adapter `ollama.chatStream` in `lib/ollama.js` (native `/api/chat`, NDJSON).
+* Defaults: model = the `chat` role if set, else the `coding` role's model; **`num_ctx` 16384** (`ORCH_CHAT_NUM_CTX`, or the `chat` role's `num_ctx`) and **`think: false`** are always sent explicitly
+  (thinking models like `ornith:9b` otherwise default to thinking, and Ollama defaults the window to 4096). Per conversation you can override model, `num_ctx`, sampling options and `think` (validated like a role).
+* `POST /api/conversations/:id/messages {content, think?}` answers **`text/event-stream`** (read with `fetch`, not `EventSource`): `meta` (model, num_ctx, token budget, context manifest, warnings), `token {text}*`,
+  `thinking {text}*`, then `done {status, prompt_tokens, completion_tokens, ms, warn[]}` or `error {code, message}`. Validation problems (400/404/409) are plain JSON before any stream starts.
+* **One stream at a time, globally** (a second request gets `409 {code:"busy"}`): the model and GPU are shared with aider. Chat deliberately does not join the internal `llm.js` queue, so a long answer never blocks routing/memory calls
+  (they would simply compete for the GPU); the model card warns when a local coding task is running.
+* **Stop / disconnect**: closing the response (Stop button, leaving the page, closing the tab) aborts the upstream Ollama request; the partial answer is kept with status `aborted`. The assistant row is inserted as `streaming`,
+  flushed about every 1.5 s, and finalized (`complete` / `aborted` / `error`). Rows still `streaming` at boot (crash/restart) are marked `error` (`interrupted`) at startup.
+* **Truncation warning**: Ollama silently drops the oldest prompt content when it exceeds `num_ctx`. If `prompt_eval_count >= 95 %` of `num_ctx` the answer carries a `prompt_truncated` warning (stored in the message's `context_json.warn`).
+  Heuristic only: Ollama's prompt cache can make `prompt_eval_count` smaller than the real prompt, so a missing warning is not proof that nothing was dropped.
+* Prompt budget (estimates at about 3.5 chars/token): `num_ctx` - 2048 reserved for the answer - system prompt - history (at most 25 % of the window; only complete answers are replayed, never thinking text).
+  Hook for later context (@mentions): `chat.setContextProvider(async ({conversation, text, budget}) => ({text, manifest}))`; the text is appended to the system message inside the budget and the manifest is stored on the assistant message.
+* `GET /api/llm/info[?model=&num_ctx=]` feeds the model card: Ollama version/health, model facts, context **max** (model) / **configured** / **in use** (loaded, from `/api/ps`), loaded state, GPU share (`size_vram / size`),
+  roles using the model, sampling defaults, and a **KV-cache estimate** (`floor(block_count / full_attention_interval) x head_count_kv x (key_length + value_length) x 2 bytes` per token, from `/api/show` `model_info`; an estimate only).
+* Conversation API: `GET|POST /api/conversations`, `GET /api/conversations/:id` (with messages), `POST /api/conversations/:id/{update,delete}`.
+  (The path is `/api/conversations`, not `/api/chat/...`, because `test/m1-guards` reserves `/api/chat` strings for `lib/ollama.js`.)
+* UI: stop button (AbortController), collapsible thinking block, minimal markdown renderer that never produces HTML (`public/js/md-parse.js` builds a tree; `chat.js` renders it with `textContent`; only `http(s)` links).
+  Leaving the page stops a running answer (the partial text is kept).
+
 ## Dashboard UI (no build step)
 
 Plain ES modules in `public/` (`index.html`, `style.css`, `app.js`, `js/*.js`), CSS custom properties, dark/light via `prefers-color-scheme` (toggle in the sidebar footer), no framework.
-* Sidebar: **Projects / Tasks / Models** + live chips (Ollama, Cursor usage, pending memory proposals). Hash routes: `#/projects`, `#/projects/<id>/<services|deps|context|memory|sequences|settings>`, `#/tasks[/<id>]`, `#/models`.
+* Sidebar: **Projects / Tasks / Chat / Models** + live chips (Ollama, Cursor usage, pending memory proposals). Hash routes: `#/projects`, `#/projects/<id>/<services|deps|context|memory|sequences|settings>`, `#/tasks[/<id>]`, `#/chat[/<id>]`, `#/models`.
   Old links (`?project=N&panel=...`) are mapped.
 * Projects: cards, **New project** modal, authorized-folders card; project page with tabs; services as cards (status/origin/stack chips, repo status, edit, archive, unregister, detect);
   **Add service** modal with *Import from URL* (progress bar + live clone log + cancel), *Create new*, *Add existing folder* (inspect first).
 * Tasks: master-detail list with project/status filters; detail with routing, plan, review and memory cards, all approval actions, a **terminal-style live log** (SSE) and a **coloured diff** view.
-* Models: installed models, role table with validate/save/reset, default model, catalog with fit badges and verify (Download disabled).
+* Models: installed models (a **Running now** line for a loaded model: context in use, GPU share, memory, unload time), role table with validate/save/reset, default model, catalog with fit badges and verify (Download disabled).
+* Chat (`#/chat`): conversation list | thread | model card (see "Chat with the local model" below).
 * Toasts for results/errors, modals instead of `alert/confirm/prompt` (Esc, focus trap, type-to-confirm for deletes), skeleton and empty states, keyboard-friendly, responsive.
 * Screenshots: `docs/screens/`. Dev helpers: `scripts/dev-demo.js` (isolated seeded instance), `scripts/shot.sh` (headless Chrome screenshot), `scripts/ui-smoke.sh` (drives the UI over CDP).
 
@@ -291,6 +315,9 @@ All endpoints are on `http://127.0.0.1:<port>`. POSTs need `Content-Type: applic
 | `GET /api/config` | - | engines, default models, timeouts, escalation policy |
 | `GET /api/cursor/status`, `GET /api/cursor/models` | - | see above (`?refresh=1`) |
 | `GET /api/cursor/usage` | - | Cursor usage counters: `today`, `total`, `by_project` (no cap) |
+| `GET /api/llm/info[?model=&num_ctx=]` | - | model card data for Chat (read-only; never loads a model) |
+| `GET/POST /api/conversations`, `GET /api/conversations/:id`, `POST /api/conversations/:id/{update,delete}` | `{title?, project_id?, model?, options?, think?}` | chat conversations |
+| `POST /api/conversations/:id/messages` | `{content, think?}` | SSE stream: `meta`, `token`, `thinking`, `done` / `error`; 409 `busy` while another answer streams |
 | `GET /api/projects[?archived=1]` | - | list |
 | `POST /api/projects/inspect` | `{path}` | git/branch/stack detection, no side effects |
 | `POST /api/projects/add` (alias `POST /api/projects`) | `{path, name?, check_cmd?, install_cmd?, engine?, default_branch?, confirm_git_init?}` | add existing repo (201) |
@@ -438,6 +465,7 @@ A task that has a worktree (`review`, `failed`, `awaiting_escalation`, `awaiting
 | `ORCH_ROUTER_TIMEOUT_MS`, `ORCH_ROUTE_MIN_CONFIDENCE`, `ORCH_ROUTER_SERVICES_MAX_CHARS` | `120000`, `0.55`, `6000` | router limits |
 | `ORCH_ROUTE_COMPLEX_ENGINE`, `ORCH_ROUTE_SIMPLE_ENGINE`, `ORCH_ROUTE_PLAN_FIRST`, `ORCH_ROUTE_APPLY` | `cursor`, `auto`, `1`, `suggest` | default routing policy (per-project override in Project panel -> settings) |
 | `ORCH_MEMORY_PROPOSALS`, `ORCH_MEMORY_TIMEOUT_MS`, `ORCH_MEMORY_NUM_CTX` | `1`, `180000`, `8192` | memory proposals |
+| `ORCH_CHAT_NUM_CTX` | `16384` | dashboard chat context window (the `chat` role's `num_ctx` overrides it) |
 | `ORCH_CURSOR_IDE_BIN`, `ORCH_OSASCRIPT_BIN`, `ORCH_OPEN_DRY_RUN` | auto, `osascript`, `0` | Open in Cursor (dry-run records the command only) |
 
 ### New API endpoints
@@ -478,7 +506,7 @@ Use `ORCH_CURSOR_BIN=<stub>`, `ORCH_OPEN_DRY_RUN=1`, `ORCH_OSASCRIPT_BIN=<stub>`
 - Stage 4 limits: supervised/Open-in-Cursor needs an existing worktree; IDE Agent-mode/Auto model must be selected once by hand; IDE and Terminal launches were only dry-run tested; interactive sessions are only counted as opened `sessions`; a local and a Cursor task can overlap; memory drafting holds the runner slot briefly; the 9B router can misjudge difficulty on vague prompts (it is only a suggestion; check the routing card); the dashboard has no automated tests.
 - The plan-first, sequence, parallel and supervised flows were verified with the stub agent; real Cursor was called once in stage 4 (`--mode plan`) to confirm the flags and reported model.
 - **No atomic cross-repository merge**: every task is merged with its own approval; `stack` dependencies across repos are rejected.
-- **Model downloads are disabled** (`ORCH_ALLOW_MODEL_PULL=0`); the pull/delete code is covered only by fake-server tests. Only roles `coding`, `routing`, `memory` have consumers today.
+- **Model downloads are disabled** (`ORCH_ALLOW_MODEL_PULL=0`); the pull/delete code is covered only by fake-server tests. Only roles `coding`, `routing`, `memory`, `chat` have consumers today.
 - Clone import supports https/ssh only (no credentials are stored; private repos need your own credential helper or ssh-agent); LAN hosts are allowed with a warning. A remote can back only one active service.
 - Import jobs are in memory (forgotten on restart; a running clone is cleaned up by the startup sweep).
 - Schema v5 (dropping the legacy columns) and API contract v5 are not done.
