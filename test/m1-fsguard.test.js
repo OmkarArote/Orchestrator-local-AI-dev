@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { createGuard, removeOwnedDir, inside, same } = require('../lib/fsguard');
+const { createGuard, removeOwnedDir, removeOwnedFile, inside, same } = require('../lib/fsguard');
 
 describe('M1 fsguard: authorized roots + canonicalisation', () => {
   let base, home, work, other, g, own;
@@ -163,5 +163,46 @@ describe('M1 fsguard: authorized roots + canonicalisation', () => {
       removeOwnedDir(a, { home, isOwned: () => true });
       assert.ok(fs.existsSync(victim), 'target of an inner symlink survives');
     });
+  });
+});
+
+describe('M6 fsguard.removeOwnedFile (the only single-file delete)', () => {
+  let base, home, root, other;
+  before(() => {
+    base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'orch-fsf-')));
+    home = path.join(base, 'home'); root = path.join(base, 'own'); other = path.join(base, 'other');
+    for (const d of [home, path.join(root, 'ab'), other]) fs.mkdirSync(d, { recursive: true });
+  });
+  after(() => fs.rmSync(base, { recursive: true, force: true }));
+  const file = (...p) => { const f = path.join(root, ...p); fs.writeFileSync(f, 'x'); return f; };
+
+  it('removes a regular file inside the owned root; false when it is already gone', () => {
+    const f = file('ab', 'one'); assert.equal(removeOwnedFile(f, { root, home }), true); assert.equal(fs.existsSync(f), false);
+    assert.equal(removeOwnedFile(f, { root, home }), false);
+    const top = file('top'); assert.equal(removeOwnedFile(top, { root, home }), true, 'a file directly in the root is fine');
+  });
+  it('refuses files outside the root (also via ..), relative paths, control characters and bad roots', () => {
+    const victim = path.join(other, 'victim'); fs.writeFileSync(victim, 'keep');
+    assert.throws(() => removeOwnedFile(victim, { root, home }), /outside the owned directory/);
+    assert.throws(() => removeOwnedFile(path.join(root, 'ab', '..', '..', 'other', 'victim'), { root, home }), /outside/);
+    assert.throws(() => removeOwnedFile('relative/file', { root, home }), /absolute path/);
+    assert.throws(() => removeOwnedFile(path.join(root, 'a\nb'), { root, home }), /absolute path/);
+    assert.throws(() => removeOwnedFile(victim, { root: '/', home }), /root or the home/);
+    assert.throws(() => removeOwnedFile(victim, { root: home, home }), /root or the home/);
+    assert.throws(() => removeOwnedFile(victim, { root: 'rel', home }), /absolute root/);
+    assert.throws(() => removeOwnedFile(victim, { root: path.join(base, 'nope'), home }), /root does not exist/);
+    assert.equal(fs.readFileSync(victim, 'utf8'), 'keep');
+  });
+  it('never follows symlinks: not as the file, not as a parent directory', () => {
+    const victim = path.join(other, 'victim2'); fs.writeFileSync(victim, 'keep');
+    const link = path.join(root, 'ab', 'lnk'); fs.symlinkSync(victim, link);
+    assert.throws(() => removeOwnedFile(link, { root, home }), /symbolic link/);
+    const dirLink = path.join(root, 'escape'); fs.symlinkSync(other, dirLink);
+    assert.throws(() => removeOwnedFile(path.join(dirLink, 'victim2'), { root, home }), /outside the owned directory/);
+    assert.equal(fs.readFileSync(victim, 'utf8'), 'keep');
+  });
+  it('refuses directories', () => {
+    assert.throws(() => removeOwnedFile(path.join(root, 'ab'), { root, home }), /not a regular file/);
+    assert.ok(fs.existsSync(path.join(root, 'ab')));
   });
 });

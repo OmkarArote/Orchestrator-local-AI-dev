@@ -416,6 +416,8 @@ async function serviceApi(req, res, url) {
 
 chat.setContextProvider(require('./lib/chat-context').provider); // @project / @service mentions (read-only context)
 const chatApi = require('./lib/chat-api')({ sendJson, fail, readJson });
+const attachments = require('./lib/attachments');
+const attachmentsApi = require('./lib/attachments-api').createAttachmentsApi({ sendJson, fail, readJson });
 const featuresApi = require('./lib/features-api')({ sendJson, fail, readJson, validateTask, mergePlan: (g) => mergePlan(g) });
 
 async function memoryApi(req, res, url) {
@@ -600,6 +602,7 @@ async function api(req, res, url) {
   if (url.pathname === '/api/features' || url.pathname.startsWith('/api/features/')) return featuresApi(req, res, url);
   if (url.pathname.startsWith('/api/services/')) return serviceApi(req, res, url);
   if (url.pathname.startsWith('/api/memory-proposals')) return memoryApi(req, res, url);
+  if (url.pathname === '/api/attachments' || url.pathname.startsWith('/api/attachments/') || url.pathname === '/api/media/tools') return attachmentsApi(req, res, url);
   if (url.pathname.startsWith('/api/conversations') || url.pathname === '/api/llm/info' || url.pathname.startsWith('/api/mentions/')) return chatApi(req, res, url);
   if (url.pathname.startsWith('/api/projects')) return projectsApi(req, res, url);
   const m = url.pathname.match(/^\/api\/tasks(?:\/(\d+)(?:\/([a-z-]+))?)?$/);
@@ -823,7 +826,9 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST') {
       const origin = req.headers.origin;
       if (origin && !ALLOWED_HOSTS.has(origin.replace(/^https?:\/\//, ''))) return fail(res, 403, 'bad Origin');
-      if (!String(req.headers['content-type'] || '').startsWith('application/json')) return fail(res, 415, 'Content-Type must be application/json');
+      // the one raw-bytes route (attachment upload) has its own content-type + custom-header checks in lib/attachments-api.js
+      const isUpload = url.pathname === '/api/attachments';
+      if (!isUpload && !String(req.headers['content-type'] || '').startsWith('application/json')) return fail(res, 415, 'Content-Type must be application/json');
     }
     if (url.pathname.startsWith('/api/')) return await api(req, res, url);
     if (req.method !== 'GET') return fail(res, 405, 'method not allowed');
@@ -844,6 +849,8 @@ server.listen(cfg.PORT, cfg.HOST, () => {
   if (cfg.CURSOR_CAP_ENV_IGNORED.length) console.log(`[startup] NOTICE: ${cfg.CURSOR_CAP_ENV_IGNORED.join(', ')} ${cfg.CURSOR_CAP_ENV_IGNORED.length > 1 ? 'are' : 'is'} set but IGNORED: the Cursor daily caps were removed. Usage is only counted (GET /api/cursor/usage); every Cursor run still needs your approval click.`);
   try { const swept = serviceOps.sweepJournal(); if (swept.length) console.log(`[startup] journal sweep removed ${swept.length} leftover director${swept.length === 1 ? 'y' : 'ies'}: ${swept.map((x) => x.path).join(', ')}`); } catch (e) { console.error('[startup] journal sweep failed:', e.message); }
   try { const stale = chat.recoverStale(); if (stale) console.log(`[startup] marked ${stale} interrupted chat answer(s) as error`); } catch (e) { console.error('[startup] chat recovery failed:', e.message); }
+  const sweepAttachments = () => { try { const r = attachments.gc(); if (r.removed.length || r.orphans) console.log(`[attachments] sweep removed ${r.removed.length} unreferenced attachment(s) (${r.bytes} bytes), ${r.orphans} orphan file(s)${r.retention ? `, ${r.retention} by retention` : ''}`); } catch (e) { console.error('[attachments] sweep failed:', e.message); } };
+  sweepAttachments(); setInterval(sweepAttachments, 3600 * 1000).unref();
   runner.start();
 });
 for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { console.log(`${sig}: shutting down`); runner.stopCurrent(); server.close(); setTimeout(() => process.exit(0), 200); });
