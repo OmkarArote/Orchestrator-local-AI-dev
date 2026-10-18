@@ -241,7 +241,7 @@ describe('M14 cursor rules: lint, diff and the rules of this repository', () => 
     }
     assert.ok(always > 0 && always <= 600, `always-applied rules ~${always} tokens (budget 600)`);
     const all = Object.values(text).join('\n');
-    for (const must of ['zero npm dependencies', 'lib/ollama.js', '/api/chat', 'lib/proc.js', 'unlinkSync', 'fsguard', 'portable', 'users.noreply.github.com', 'no local git identity', 'Plan first', 'Never claim', 'm1-guards', 'alert(']) assert.ok(new RegExp(must.replace(/[()]/g, '\\$&'), 'i').test(all), `rules mention '${must}'`);
+    for (const must of ['zero npm dependencies', 'lib/ollama.js', '/api/chat', 'lib/proc.js', 'unlinkSync', 'fsguard', 'portable', 'users.noreply.github.com', 'no local git identity', 'Plan first', 'Never claim', 'm1-guards', 'alert(', 'approve-merge', 'may only run the no-usage', 'ORCH_DB', 'temp-env']) assert.ok(new RegExp(must.replace(/[()]/g, '\\$&'), 'i').test(all), `rules mention '${must}'`);
     // every file path / identifier the rules cite exists
     for (const f of ['lib/ollama.js', 'lib/proc.js', 'lib/fsguard.js', 'lib/safegit.js', 'lib/runner.js', 'lib/cursor.js', 'lib/open.js', 'test/m1-guards.test.js', 'test/m10-ui.test.js', 'test/helpers/harness.js', 'scripts/ui-smoke.sh', 'scripts/dev-demo.js']) assert.ok(fs.existsSync(path.join(ROOT, f)), `${f} exists`);
     assert.match(fs.readFileSync(path.join(ROOT, 'lib', 'fsguard.js'), 'utf8'), /removeOwnedDir/);

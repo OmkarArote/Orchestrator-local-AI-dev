@@ -13,6 +13,19 @@ function guardTestRun(name, fallback) {
   if (env.NODE_TEST_CONTEXT) throw new Error(`refusing to use the real ${name} default under node:test - set ${name} to a temp path`);
   return fallback;
 }
+/**
+ * Where the SQLite DB lives. An explicit ORCH_DB always wins (tests, demos, migrations of copies). The REAL default (<repo>/data/orchestrator.db)
+ * is only handed out to `node server.js` itself (or when ORCH_ALLOW_DEFAULT_DB=1 is set on purpose), and never under `node --test`
+ * (NODE_TEST_CONTEXT) or NODE_ENV=test. Anything else (a one-off `node -e "require('./lib/db')"`, a script, an editor tool) gets an error
+ * instead of silently opening - and auto-migrating - the live database. Pure function so it can be tested without opening anything.
+ */
+function resolveDbPath(e = env, mainFile = require.main && require.main.filename) {
+  if (e.ORCH_DB) return e.ORCH_DB;
+  if (e.NODE_TEST_CONTEXT || e.NODE_ENV === 'test') throw new Error('refusing to use the real ORCH_DB default under node:test / NODE_ENV=test - set ORCH_DB to a temp path');
+  const real = (x) => { try { return require('node:fs').realpathSync(x); } catch { return path.resolve(x); } };
+  if (e.ORCH_ALLOW_DEFAULT_DB === '1' || (mainFile && real(mainFile) === real(path.join(ROOT, 'server.js')))) return path.join(ROOT, 'data', 'orchestrator.db');
+  throw new Error('refusing to open the real orchestrator DB (data/orchestrator.db) from anything but `node server.js`: set ORCH_DB to a throw-away path (or ORCH_ALLOW_DEFAULT_DB=1 if you really mean it)');
+}
 const num = (v, d) => (Number.isFinite(Number(v)) && v !== undefined && v !== '' ? Number(v) : d);
 
 module.exports = {
@@ -28,7 +41,8 @@ module.exports = {
   AUTHORIZED_ROOTS: (env.ORCH_AUTHORIZED_ROOTS || path.join(HOME, 'work')).split(':').map((s) => s.trim()).filter(Boolean).map((s) => (s === '~' || s.startsWith('~/') ? path.join(HOME, s.slice(1)) : s)),
   PROJECTS_PARENT: env.ORCH_PROJECTS_PARENT || path.join(HOME, 'work'), // default parent dir for "create new project"
   WORKTREES: env.ORCH_WORKTREES || guardTestRun('ORCH_WORKTREES', path.join(LOCAL, 'worktrees')),
-  DB_PATH: env.ORCH_DB || guardTestRun('ORCH_DB', path.join(ROOT, 'data', 'orchestrator.db')),
+  get DB_PATH() { return resolveDbPath(); },   // lazy: only code that actually opens the DB trips the guard
+  resolveDbPath,
   LOG_DIR: env.ORCH_LOG_DIR || guardTestRun('ORCH_LOG_DIR', path.join(LOCAL, 'logs')),
   PUBLIC_DIR: path.join(ROOT, 'public'),
   OLLAMA_API_BASE: env.OLLAMA_API_BASE || 'http://127.0.0.1:11434',

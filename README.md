@@ -52,7 +52,7 @@ Localhost-only (Host/Origin checks, no auth, so do not expose the port), authori
 ### Development
 
 ```bash
-npm test            # 337 tests, no network, no Ollama or Cursor needed (stubs/fakes)
+npm test            # 340 tests, no network, no Ollama or Cursor needed (stubs/fakes)
 npm run doctor      # same as ./setup.sh
 ```
 
@@ -250,6 +250,7 @@ Plain ES modules in `public/` (`index.html`, `style.css`, `app.js`, `js/*.js`), 
 * **Rollback = restore the backup DB AND the old code together.** Older code refuses a newer DB ("schema vN is newer than this orchestrator"), and the new code cannot read an older DB without migrating it.
   Steps: `./stop.sh`; `git checkout <old tag>`; copy the matching `pre-v5-migration-*.db` (to go back to v4 code) or `pre-v4-migration-*.db` (v3 code) over `data/orchestrator.db`; `./start.sh`. (Anything created after the migration is lost on rollback.)
 * The test suite never touches the real data dir (`config.js` refuses real-dir fallbacks under `node --test`).
+* **The real DB is only opened by `node server.js`.** `config.js` hands out the default `data/orchestrator.db` to the server entry only (or with `ORCH_ALLOW_DEFAULT_DB=1`, on purpose) and never under `node --test` / `NODE_ENV=test`; a one-off `node -e "require('./lib/db')"`, a script or a tool must set `ORCH_DB` to a throw-away path or it fails with "refusing to open the real orchestrator DB" (`test/m15-db-guard.test.js`). Background: a stray `require` once opened and auto-migrated the live DB (a backup was made first).
 
 ## Cursor CLI engine
 

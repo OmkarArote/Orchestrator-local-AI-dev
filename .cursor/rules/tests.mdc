@@ -4,7 +4,7 @@ globs: test/**/*.js
 alwaysApply: false
 ---
 
-- `node:test` + `node:assert/strict` only. Boot the app with `startServer()` from `test/helpers/harness.js` (random port, temp HOME/DB/logs/worktrees, stub engines, fake Ollama); never the real `data/` (config refuses real dirs under `node --test`). Code that needs the DB outside a server runs in a subprocess with a temp `ORCH_DB`.
+- `node:test` + `node:assert/strict` only. Boot the app with `startServer()` from `test/helpers/harness.js` (random port, temp HOME/DB/logs/worktrees, stub engines, fake Ollama); never the real `data/` (config refuses real dirs under `node --test`). Code that needs the DB outside a server runs in a subprocess with a temp `ORCH_DB` (or, in-process, `require('./helpers/temp-env')` FIRST). Never open `data/orchestrator.db`.
 - Portable: must pass on ubuntu and macOS (CI matrix) and with/without `CI=1`. No `rg`, `timeout`, GNU-only flags or absolute home paths. Compare `fs.realpathSync` paths (macOS `/var` -> `/private/var`). Build repos with `makeRepo()`; assert "untouched" with `fingerprint()`.
 - No network, no Ollama, no Cursor: use the stubs/fakes. No fixed ports, no sleeps as synchronisation (use `S.waitFor`).
 - Test the failure/refusal paths of safety features (outside roots, symlinks, secrets, missing approval), not just the happy path.
