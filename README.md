@@ -8,6 +8,7 @@ makes an isolated **git worktree + branch**, runs an engine (a free local model 
 - Projects contain services (one git repo or a folder in a repo each); every task runs in exactly one service.
 - Engines per task: `local` (aider + Ollama, free), `cursor` (Cursor CLI, uses your Cursor plan, needs your approval; runs are counted, not capped) or `auto` (local first, escalate to Cursor only after you approve).
 - Shared project rules and memory, a local router that suggests the service/engine, plan-first for complex tasks, sequences across services, an advisory AI review, and "Open in Cursor".
+- A read-only **chat** with your local model with `@project` / `@service` mentions, optional **Cursor rules** (`.cursor/rules/*.mdc`) generated per service onto a review branch, and **cross-repo features** (provider service first, contract shared with the consumers, merge-order guard).
 - Zero npm dependencies: Node.js + a static dashboard (no build step). Models are never downloaded unless you switch that on.
 
 ![Task detail](docs/screens/task-detail.png)
@@ -22,7 +23,9 @@ cd Orchestrator-local-AI-dev
 ```
 
 Then open the dashboard: **Models** (pick one of your installed Ollama models), **Projects** -> New project -> add an existing repo or create a new one, then **New task**.
-Stop with `./stop.sh`. On Windows use WSL (the scripts are bash).
+Stop with `./stop.sh`. If port 4310 is taken, start with another one: `ORCH_PORT=4311 ./start.sh`. On Windows use WSL (the scripts are bash).
+
+No `npm install` is needed (there are no npm dependencies; `npm test` and `./start.sh` run on a fresh clone with just Node >= 22.5 and git).
 
 ### Requirements
 
@@ -47,18 +50,27 @@ Defaults: repos may live under `~/work` (more folders can be authorized in the U
 
 ### Safety model
 
-Localhost-only (Host/Origin checks, no auth, so do not expose the port), authorized folders only (symlink-safe), hardened git (no hooks, https/ssh only, no credentials stored), hard timeouts and process-group kills on every subprocess, worktree isolation, human approval for start/merge/escalation, daily Cursor cap, and no automatic merging. Do not put secrets in task prompts: prompts are stored in the local database, shown in logs and, for Cursor tasks, sent to Cursor.
+Localhost-only (Host/Origin checks, no auth, so do not expose the port), authorized folders only (symlink-safe), hardened git (no hooks, https/ssh only, no credentials stored), hard timeouts and process-group kills on every subprocess, worktree isolation, human approval for start/merge/escalation, Cursor usage counted (there is no cap; Cursor only ever runs after your click), and no automatic merging. Do not put secrets in task prompts: prompts are stored in the local database, shown in logs and, for Cursor tasks, sent to Cursor.
 
 ### Development
 
 ```bash
-npm test            # 352 tests, no network, no Ollama or Cursor needed (stubs/fakes)
+npm test            # 356 tests (350 where the optional local fixture backup is absent, e.g. CI), no network, no Ollama or Cursor needed (stubs/fakes)
 npm run doctor      # same as ./setup.sh
 ```
 
 Issues and pull requests are welcome. License: MIT.
 
 ---
+
+## What's new (M1-M5)
+
+* **M1 - Cursor usage counters** (schema v5): the old daily Cursor caps are gone; every Cursor run is counted per project/service (`GET /api/cursor/usage`). Cursor still runs only after an approve-start / approve-plan / approve-escalation click.
+* **M2 - Chat** (`#/chat`): conversations with the local Ollama model (streamed, read-only, no tools), model card, `ORCH_CHAT_NUM_CTX`.
+* **M3 - Mentions**: `@project` / `@service` in chat pull in the project's memory, docs and code (lexical retrieval from the git object database, read-only, redacted).
+* **M4 - Cursor rules**: opt-in per service, preview first, explicit approve, committed only on a review branch; hand-written rules are never overwritten. This repo ships its own `.cursor/rules/`.
+* **M5 - Cross-repo features** (`#/features`): contract-first provider/consumer tasks across projects, drift check, merge-order guard with a recorded, typed override.
+* **Safety hardening**: the real database (`data/orchestrator.db`) is opened only by `node server.js` (override on purpose with `ORCH_ALLOW_DEFAULT_DB=1`); tests and scripts must set `ORCH_DB`.
 
 # Reference
 
@@ -77,7 +89,7 @@ Issues and pull requests are welcome. License: MIT.
  |  lib/db.js        lib/projects.js      lib/cursor.js                  |
  |  (sqlite+migrate) (add/create/inspect) (status/models cache,          |
  |      ^                                  stream-json parser)           |
- |  lib/runner.js  (single worker, polls DB every 2s)                    |
+ |  lib/runner.js  (worker, polls DB every 2s)                           |
  |   approved -> worktree -> engine(aider|cursor) -> check -> commit     |
  |        -> [advisory cursor review] -> review                          |
  |   local fails + engine=auto -> awaiting_escalation -> (human) -> cursor|
@@ -100,7 +112,7 @@ Files:
 | `config.js` | all settings (env overrides, see below) |
 | `lib/db.js` | SQLite schema, **versioned migration** (PRAGMA user_version), atomic status transitions, cursor usage counter |
 | `lib/projects.js` | path safety, inspect / add-existing / create-new, stack detection |
-| `lib/runner.js` | the single-task-at-a-time worker (worktree, engines, check, commit, review, escalation) |
+| `lib/runner.js` | the worker (one local task at a time, up to `ORCH_MAX_PARALLEL_CURSOR` Cursor tasks; worktree, engines, check, commit, review, escalation) |
 | `lib/cursor.js` | Cursor CLI helpers: cached `agent status` / `--list-models`, stream-json -> readable lines |
 | `lib/git-ops.js` | diff, guarded merge, worktree removal (all per project) |
 | `lib/fsguard.js`, `lib/roots.js` | authorized-folder path guard (canonical paths, symlink-safe); `removeOwnedDir` is the only recursive delete |
@@ -109,6 +121,13 @@ Files:
 | `lib/ollama.js`, `lib/models.js`, `lib/registry.js`, `lib/model-catalog.json` | Ollama client, roles/validation/catalog, read-only registry lookups |
 | `scripts/` | `dev-demo.js`, `shot.sh`, `ui-smoke.sh` (isolated demo instance, screenshots, UI smoke test) |
 | `lib/paths.js` | branch / worktree path helpers |
+| `lib/context.js`, `lib/memory.js`, `lib/router.js`, `lib/settings.js`, `lib/deps.js`, `lib/open.js` | project context bundle, memory proposals, service/engine router, per-project settings, service dependencies, "Open in Cursor" |
+| `lib/llm.js`, `lib/chat.js`, `lib/chat-api.js`, `lib/chat-context.js`, `lib/mentions.js`, `lib/repo-reader.js` | local-model chat, `@mentions`, read-only repository/document retrieval |
+| `lib/cursor-rules.js` | Cursor rules generation (M4) |
+| `lib/features.js`, `lib/features-api.js` | cross-repo features (M5) |
+| `lib/errors.js` | shared HTTP error helpers |
+| `.cursor/rules/` | this repository's own Cursor rules (conventions and guard rules) |
+| `.github/workflows/ci.yml` | CI: `npm test` on ubuntu and macOS, Node 22 |
 | `lib/proc.js` | subprocess + git helpers with hard timeouts |
 | `public/` | dashboard (no build step) |
 | `data/orchestrator.db` | the database (history is kept; do not delete). Pre-migration snapshots: `data/pre-projects-migration-*.db` |
@@ -116,7 +135,7 @@ Files:
 
 ## Start / stop
 
-`./start.sh` / `./stop.sh` (see Quick start). Log: `~/work/local-ai-dev/logs/orchestrator.log`. Health: `curl -s http://127.0.0.1:4310/api/health`.
+`./start.sh` / `./stop.sh` (see Quick start). Log: `$ORCH_LOG_DIR/orchestrator.log` (default `~/work/local-ai-dev/logs/orchestrator.log`). Health: `curl -s http://127.0.0.1:${ORCH_PORT:-4310}/api/health`.
 
 ## Projects, services and authorized folders (schema v4)
 
@@ -184,7 +203,7 @@ Chat page: conversations (SQLite, schema v5 tables `chat_conversations` / `chat_
 * `GET /api/llm/info[?model=&num_ctx=]` feeds the model card: Ollama version/health, model facts, context **max** (model) / **configured** / **in use** (loaded, from `/api/ps`), loaded state, GPU share (`size_vram / size`),
   roles using the model, sampling defaults, and a **KV-cache estimate** (`floor(block_count / full_attention_interval) x head_count_kv x (key_length + value_length) x 2 bytes` per token, from `/api/show` `model_info`; an estimate only).
 * Conversation API: `GET|POST /api/conversations`, `GET /api/conversations/:id` (with messages), `POST /api/conversations/:id/{update,delete}`.
-  (The path is `/api/conversations`, not `/api/chat/...`, because `test/m1-guards` reserves `/api/chat` strings for `lib/ollama.js`.)
+  (The path is `/api/conversations`, not `/api/chat/...`, because `test/m1-guards.test.js` reserves `/api/chat` strings for `lib/ollama.js`.)
 * UI: stop button (AbortController), collapsible thinking block, minimal markdown renderer that never produces HTML (`public/js/md-parse.js` builds a tree; `chat.js` renders it with `textContent`; only `http(s)` links).
   Leaving the page stops a running answer (the partial text is kept).
 
@@ -246,7 +265,7 @@ A **feature** groups tasks across projects/services, e.g. "create this API in se
 ## Dashboard UI (no build step)
 
 Plain ES modules in `public/` (`index.html`, `style.css`, `app.js`, `js/*.js`), CSS custom properties, dark/light via `prefers-color-scheme` (toggle in the sidebar footer), no framework.
-* Sidebar: **Projects / Tasks / Chat / Models** + live chips (Ollama, Cursor usage, pending memory proposals). Hash routes: `#/projects`, `#/projects/<id>/<services|deps|context|memory|sequences|settings>`, `#/tasks[/<id>]`, `#/chat[/<id>]`, `#/models`.
+* Sidebar: **Projects / Tasks / Features / Chat / Models** + live chips (Ollama, Cursor usage, pending memory proposals). Hash routes: `#/projects`, `#/projects/<id>/<services|deps|context|memory|sequences|settings>`, `#/tasks[/<id>]`, `#/features[/<id>]`, `#/chat[/<id>]`, `#/models`.
   Old links (`?project=N&panel=...`) are mapped.
 * Projects: cards, **New project** modal, authorized-folders card; project page with tabs; services as cards (status/origin/stack chips, repo status, edit, archive, unregister, detect);
   **Add service** modal with *Import from URL* (progress bar + live clone log + cancel), *Create new*, *Add existing folder* (inspect first).
@@ -350,7 +369,12 @@ The dashboard shows engine + model per task and a clear badge: **local** (green,
 | `ORCH_ALLOW_MODEL_PULL` | `0` | `1` enables the (otherwise 403) model pull/delete endpoints |
 | `ORCH_OLLAMA_REGISTRY` | `https://registry.ollama.ai` | read-only manifest GETs for catalog size verification |
 | `ORCH_OLLAMA_ALLOW_REMOTE` | `0` | allow a non-loopback `OLLAMA_API_BASE` |
+| `ORCH_ALLOW_DEFAULT_DB` | `0` | `1` lets code other than `node server.js` open the real `data/orchestrator.db` (normally refused; scripts, tests and `node -e` must set `ORCH_DB` instead) |
+| `ORCH_CHAT_NUM_CTX` | `16384` | chat context window in tokens (the `chat` role's `num_ctx` overrides it) |
+| `ORCH_GIT_CONFIG_NOSYSTEM` | unset | `1` makes the hardened git ignore the system git config |
 | `ORCH_TEST_ALLOW_FILE` | unset | **test-only**: allow `file://` remotes for import tests; never set in production |
+
+More variables (router, memory, context bundle, Cursor parallelism, Open in Cursor) are in **New environment variables** below. `ORCH_TEST_*` variables other than `ORCH_TEST_ALLOW_FILE` are test-only failure/disk-space injectors used by the test suite; never set them.
 
 A disposable second instance (e.g. testing against throwaway repos or a fake `agent`) can be started by hand with different env vars:
 
@@ -533,12 +557,14 @@ A task that has a worktree (`review`, `failed`, `awaiting_escalation`, `awaiting
 ### New API endpoints
 | Method + path | Effect |
 |---|---|
-| `GET/POST /api/projects/:id/services`, `POST .../services/detect`, `POST /api/services/:id/{update,archive,unarchive}` | services |
+| `GET/POST /api/projects/:id/services`, `GET .../services/detect`, `GET /api/services/:id/{status,detect}`, `POST /api/services/:id/{update,archive,unarchive,remove}` | services |
 | `GET /api/projects/:id/context`, `POST .../context/{save,import,export,preview}` | context files |
 | `POST /api/projects/:id/route` | router dry run |
 | `POST /api/projects/:id/groups`, `GET /api/groups[?project_id=N]`, `GET /api/groups/:id`, `POST /api/groups/:id/{approve-start,reject}` | sequences |
 | `GET /api/memory-proposals`, `POST /api/memory-proposals/:id/{update,approve,reject}` | memory proposals |
 | `POST /api/tasks/:id/{reroute,approve-plan,reject-plan,open-cursor,release}` | routing / plan / supervised actions |
+| `POST /api/tasks/:id/rerun` | new pending copy of a failed/rejected task (you approve its start again) |
+| `GET /api/projects/:id/deps`, `POST /api/projects/:id/deps` | service dependency map; body `{action: 'add'\|'remove', ...}` |
 | `POST /api/tasks` (extended) | `service_id` (id/`auto`/none), `engine: "auto-route"`, `plan_first` |
 | `POST /api/tasks/:id/approve-start` (extended) | optional overrides `service_id, engine, model, plan_first, allow_escalation, use_routing`; 409 while routing is still running |
 

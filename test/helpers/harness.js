@@ -76,7 +76,7 @@ async function startServer(opts = {}) {
     async stop() {
       if (!exited) { child.kill('SIGTERM'); await Promise.race([new Promise((r) => child.on('exit', r)), sleep(3000)]); if (!exited) child.kill('SIGKILL'); }
       if (fake) await fake.close();
-      if (!opts.keep) fs.rmSync(base, { recursive: true, force: true });
+      if (!opts.keep) fs.rmSync(base, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     },
     async waitFor(fn, { timeout = process.env.CI ? 60000 : 40000, every = 100, what = 'condition' } = {}) {
       const t0 = Date.now();
