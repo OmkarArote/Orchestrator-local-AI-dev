@@ -128,8 +128,21 @@ function validateTask(b) {
   const plan_first = truthy(b.plan_first);
   if (plan_first && engine !== 'cursor' && !routeEngine) return { error: 'plan_first only applies to engine=cursor' };
   const route_requested = routeService || routeEngine;
+  let attachments = [];
+  if (b.attachments != null) {
+    if (!Array.isArray(b.attachments) || b.attachments.length > 20) return { error: 'attachments must be an array of at most 20 items' };
+    const cloud = engine !== 'local';
+    for (const raw of b.attachments) {
+      const id = Number(raw && typeof raw === 'object' ? raw.id : raw);
+      const toCloud = !!(raw && typeof raw === 'object' && raw.to_cloud);
+      if (!Number.isInteger(id) || id < 1) return { error: 'bad attachment id' };
+      if (!store.attGet(id)) return { error: `attachment ${id} not found`, status: 404 };
+      if (toCloud && !cloud) return { error: 'to_cloud applies only when the engine is not local' };
+      if (!attachments.some((a) => a.id === id)) attachments.push({ id, toCloud: cloud && toCloud });
+    }
+  }
   return { project_id: project.id, title, prompt, files: files.map((f) => path.posix.normalize(f)), check_cmd, engine, model, allow_escalation, ai_review, review_model,
-    service_id, plan_first: plan_first && engine === 'cursor', route_requested, route_request: { service: routeService, engine: routeEngine }, routing_source: route_requested ? null : 'manual' };
+    service_id, plan_first: plan_first && engine === 'cursor', route_requested, route_request: { service: routeService, engine: routeEngine }, routing_source: route_requested ? null : 'manual', attachments };
 }
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml' };
@@ -615,7 +628,11 @@ async function api(req, res, url) {
       const v = validateTask(await readJson(req));
       if (v.error) return fail(res, v.status || 400, v.error);
       const id = store.createTask(v);
-      store.addEvent(id, 'system', `task created (status: pending, awaiting start approval; engine ${v.engine}${v.model ? ' model ' + v.model : ''}${v.allow_escalation ? ', escalation allowed' : ''}${v.ai_review ? ', ai_review' : ''}${v.service_id ? ', service #' + v.service_id : ''}${v.plan_first ? ', plan_first' : ''})`);
+      for (const a of v.attachments || []) {
+        attachments.link(a.id, { taskId: id, toCloud: a.toCloud });
+        await attachments.derive(a.id);
+      }
+      store.addEvent(id, 'system', `task created (status: pending, awaiting start approval; engine ${v.engine}${v.model ? ' model ' + v.model : ''}${v.allow_escalation ? ', escalation allowed' : ''}${v.ai_review ? ', ai_review' : ''}${v.service_id ? ', service #' + v.service_id : ''}${v.plan_first ? ', plan_first' : ''}${(v.attachments || []).length ? ', attachments ' + v.attachments.length : ''})`);
       if (v.route_requested) {
         store.updateFields(id, { routing_json: JSON.stringify({ request: v.route_request }) });
         store.addEvent(id, 'route', `routing requested (${[v.route_request.service && 'service=auto', v.route_request.engine && 'engine=auto-route'].filter(Boolean).join(', ')}); asking the local model ${models.effective('routing').model} (suggestion only; you confirm at approve-start)`);
@@ -633,7 +650,11 @@ async function api(req, res, url) {
   if (!project) return fail(res, 500, `project ${task.project_id} of this task is missing`);
 
   if (req.method === 'GET') {
-    if (!action) return sendJson(res, 200, { ...task, approvals: store.approvals(id), memory_proposals: store.proposalsForTask(id) });
+    if (!action) {
+      const links = store.attLinksForTask(id).map((l) => ({ id: l.attachment_id, name: l.orig_name, kind: l.kind, to_cloud: !!l.to_cloud }));
+      const sent = task.engine !== 'local' && links.some((l) => l.to_cloud);
+      return sendJson(res, 200, { ...task, approvals: store.approvals(id), memory_proposals: store.proposalsForTask(id), attachments: links, sent_to_cursor: sent });
+    }
     if (action === 'events') return sendJson(res, 200, store.eventsAfter(id, Number(url.searchParams.get('after')) || 0, 5000));
     if (action === 'stream') return stream(req, res, task);
     if (action === 'diff') return sendJson(res, 200, await taskDiff(task));

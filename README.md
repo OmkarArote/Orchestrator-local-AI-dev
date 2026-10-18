@@ -55,7 +55,7 @@ Localhost-only (Host/Origin checks, no auth, so do not expose the port), authori
 ### Development
 
 ```bash
-npm test            # 418 tests on the author machine (418 pass, 0 fail, 0 skipped; same with CI=1); fresh-clone/CI count is recorded after the pull-request run (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
+npm test            # 420 tests on the author machine (420 pass, 0 fail, 0 skipped; same with CI=1); fresh-clone/CI count is recorded after the pull-request run (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
 npm run doctor      # same as ./setup.sh
 ```
 
@@ -65,7 +65,7 @@ Issues and pull requests are welcome. License: MIT.
 
 ---
 
-## What's new (M1-M10)
+## What's new (M1-M11)
 
 * **M1 - Cursor usage counters** (schema v5): the old daily Cursor caps are gone; every Cursor run is counted per project/service (`GET /api/cursor/usage`). Cursor still runs only after an approve-start / approve-plan / approve-escalation click.
 * **M2 - Chat** (`#/chat`): conversations with the local Ollama model (streamed, read-only, no tools), model card, `ORCH_CHAT_NUM_CTX`.
@@ -77,6 +77,7 @@ Issues and pull requests are welcome. License: MIT.
 * **M8 - Chat uploads**: the chat composer can attach, drop or paste a file (up to 8). Derived text is injected on that turn only, inside an untrusted `<attachment>` block and capped at 40% of the context budget. Later turns keep a one-line stub unless the message was pinned. History never sends an `images` field.
 * **M9 - Auto model choice**: a conversation or the chat/coding role can be set to `auto`. `lib/model-select.js` scores installed Ollama models only (strength, already loaded, size, fit) and explains the score. It never downloads. An empty set names the missing capability and a catalog suggestion. If a local task holds the machine and the best choice would swap, the result is `defer`. `routing` and `memory` stay on their fixed model. The last observed load time is stored in `settings_kv`.
 * **M10 - Media roles**: `image`, `video`, `audio` and `document` (13 roles). Image and video need `vision`. Document needs a context window of at least 8192. Audio is the whisper tool preset. With no vision model, an image stays as recognised text plus a notice. A vision model receives one scaled copy (768px, metadata removed) per message.
+* **M11 - Task attachments**: the new-task form can attach files. The context bundle gains an `ATTACHMENTS` part. Local engines always get the derived text. `cursor`, `auto` and `auto-route` get it only when that attachment's "to Cursor" tick is on. The task page says whether it was sent. The file is not copied into the worktree.
 * **Safety hardening**: the real database (`data/orchestrator.db`) is opened only by `node server.js` (override on purpose with `ORCH_ALLOW_DEFAULT_DB=1`); tests and scripts must set `ORCH_DB`.
 
 # Reference
@@ -305,7 +306,7 @@ Safe storage for images, documents, audio and video, plus text extraction for th
 * **Zip / image bombs**: classification uses the central directory only (entry names + declared sizes): entry count <= 2000, any entry <= 20 MiB declared, total <= 100 MiB declared, ratio <= 100:1 above 1 MiB, no `..` / absolute / backslash-traversal names, no encryption, no nested archives, no zip64. Images are limited to 50 megapixels by their declared dimensions. Extraction inflates Office entries in memory with `maxOutputLength` and the same caps; it never writes zip entries to disk.
 * **Storage**: `<ORCH_ATTACH_DIR>/<sha256[0:2]>/<sha256>` (owner-only 0600/0700). The client's file name is only a sanitised display string and is never used in a path. Uploads stream to `attachments/tmp/`, are size-capped while streaming and renamed into place; aborted uploads leave nothing behind. Every delete goes through `fsguard.removeOwnedFile` (refuses symlinks, anything outside the attachments dir, directories). The optional PDFKit helper, if compiled, is cached at `<ORCH_ATTACH_DIR>/bin/pdfkit-text`.
 * **Other endpoints**: `GET /api/attachments` (list + totals + limits), `GET /api/attachments/:id` (links, derivation summaries), `GET /api/attachments/:id/raw` (**images only**; `nosniff`, `CSP: sandbox`), `POST /api/attachments/:id/derive` (text, CSV summary, HTML, Office/EPUB, PDF, image OCR; audio/video and a missing tool answer 422 `unsupported` or `tool_missing` with the install command), `POST /api/attachments/:id/delete` (409 while still linked), `POST /api/attachments/gc {older_than_hours?}`, `GET /api/media/tools` (detects optional `tesseract`, `pdftotext`/`pdftoppm` (poppler), `ffmpeg`/`ffprobe`, `whisper`, `textutil`, `swiftc`). Those tools run only from `lib/media-tools.js`, and only when a derivation asks for them.
-* **What a model may see**: only *derived text*, never bytes or paths. `lib/attachments.js` (`exposeFor`) wraps it as `<attachment ... trust="untrusted">`, escapes anything that could close or spoof the wrapper, redacts secret-looking strings (counted), flags prompt-injection phrases, caps the size, and for cloud / Cursor engines includes **only attachments with an explicit per-attachment tick** (`attachment_links.to_cloud`, default off). Chat injects that text on the attaching turn (or again when the message is pinned) through a ledger layer capped at 40% of `context_max_chars`. Later turns replay a one-line stub. Tasks do not use it yet (M11).
+* **What a model may see**: only *derived text*, never bytes or paths. `lib/attachments.js` (`exposeFor`) wraps it as `<attachment ... trust="untrusted">`, escapes anything that could close or spoof the wrapper, redacts secret-looking strings (counted), flags prompt-injection phrases, caps the size, and for cloud / Cursor engines includes **only attachments with an explicit per-attachment tick** (`attachment_links.to_cloud`, default off). Chat injects that text on the attaching turn (or again when the message is pinned). A task bundle gets an `ATTACHMENTS` part: local engines always, `cursor` / `auto` / `auto-route` only when that tick is on. Files are not copied into the worktree.
 * **Limits per owner** (enforced when linking): 8 attachments per chat message, 20 per task.
 
 ## Cursor CLI engine

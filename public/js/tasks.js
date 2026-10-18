@@ -1,6 +1,6 @@
 // Tasks: list + detail (live terminal log, coloured diff, approvals, overrides, routing/plan/review cards, new-task modal).
 import { el, clear, api, badge, chip, statusBadge, empty, skeletonLines, field, select, modal, confirmDialog, promptDialog, toast, toastError, busy, hhmmss, copyText, shortPath } from './ui.js';
-import { overrideDialog } from './features.js';
+import { uploadFile } from './attachments.js';
 import { S, loadTasks, loadMem, loadServices, loadProjects, project, projName, activeServices, ACTIVE_STATUSES, setProjectFilter } from './state.js';
 
 const isCloud = (t) => t.engine !== 'local';
@@ -47,13 +47,30 @@ export async function newTaskModal(defaultProject, defaultService) {
   const localModel = select([['', 'default'], ['auto', 'auto']], '');
   api('/ollama/models').then((r) => { for (const m of (r.models || [])) localModel.append(el('option', { value: m.name, textContent: m.name })); }).catch(() => {});
   const localBox = el('div', {}, field('Local model', localModel, 'default uses the coding role; auto chooses an installed model and never downloads'));
+  const attPending = [];
+  const attList = el('div', { className: 'row att-chips' });
+  const attInput = el('input', { type: 'file', multiple: true, hidden: true, 'aria-label': 'Task files', onchange: async (e) => {
+    const files = [...e.currentTarget.files]; e.currentTarget.value = '';
+    for (const f of files) {
+      if (attPending.length >= 20) { toast('At most 20 attachments.', 'warn'); break; }
+      try { const up = await uploadFile(f); attPending.push({ id: up.id, name: up.name || f.name, to_cloud: false }); } catch (err) { toastError(err); }
+    }
+    drawAtt();
+  } });
+  function drawAtt() {
+    const cloud = engine.value !== 'local';
+    clear(attList, ...attPending.map((a) => el('span', { className: 'chip' }, a.name,
+      cloud ? el('label', { className: 'small' }, el('input', { type: 'checkbox', checked: !!a.to_cloud, 'aria-label': `Send ${a.name} to Cursor`, onchange: (ev) => { a.to_cloud = ev.currentTarget.checked; } }), ' to Cursor') : null,
+      el('button', { type: 'button', className: 'chip-x', 'aria-label': `Remove ${a.name}`, textContent: '\u2715', onclick: () => { attPending.splice(attPending.indexOf(a), 1); drawAtt(); } }))));
+  }
+  const attBox = el('div', { className: 'full' }, el('div', { className: 'small dim' }, 'Attachments (derived text only; files are not copied into the worktree)'), attList, attInput, el('button', { type: 'button', className: 'btn sm sec', textContent: 'Attach', onclick: () => attInput.click() }));
   const cm = el('input', { placeholder: (S.cfg && S.cfg.cursor_default_model) || 'auto', list: 'cursor-models' }); const dl = el('datalist', { id: 'cursor-models' });
   api('/cursor/models').then((r) => dl.replaceChildren(...r.models.map((x) => el('option', { value: x.id, textContent: x.name })))).catch(() => {});
   const plan = el('input', { type: 'checkbox' }), esc = el('input', { type: 'checkbox' }), review = el('input', { type: 'checkbox' });
   const cursorBox = el('div', { className: 'callout warn stack mb' });
   const planL = el('label', { className: 'chk' }, plan, 'plan first (Cursor writes a plan; you approve it before any code is written)'), escL = el('label', { className: 'chk' }, esc, 'allow escalation to Cursor if local fails (still needs your click)');
   cursorBox.append(el('div', { className: 'small' }, '\u2601 Cursor runs on Cursor servers and uses your Pro usage.'), field('Cursor model', cm), planL, escL, dl);
-  const syncEngine = () => { const e = engine.value; cursorBox.style.display = e === 'local' ? 'none' : ''; localBox.style.display = e === 'local' ? '' : 'none'; escL.style.display = e === 'auto' || e === 'auto-route' ? '' : 'none'; planL.style.display = e === 'cursor' || e === 'auto-route' ? '' : 'none'; if (e === 'local') { plan.checked = false; esc.checked = false; } };
+  const syncEngine = () => { const e = engine.value; cursorBox.style.display = e === 'local' ? 'none' : ''; localBox.style.display = e === 'local' ? '' : 'none'; escL.style.display = e === 'auto' || e === 'auto-route' ? '' : 'none'; planL.style.display = e === 'cursor' || e === 'auto-route' ? '' : 'none'; if (e === 'local') { plan.checked = false; esc.checked = false; } drawAtt(); };
   const syncProject = async () => {
     const p = project(pSel.value); await loadServices(pSel.value);
     svc.replaceChildren(...[['', activeServices(pSel.value).length ? '\u2014 choose a service \u2014' : 'no services yet \u2013 add one first'], ...(activeServices(pSel.value).length > 1 ? [['auto', 'auto (local model picks from the service map)']] : []), ...activeServices(pSel.value).map((s) => [String(s.id), `${s.name}${s.path && s.path !== '.' ? ' (' + s.path + ')' : ''}`])].map(([v, l]) => el('option', { value: v, textContent: l })));
@@ -68,13 +85,13 @@ export async function newTaskModal(defaultProject, defaultService) {
   const create = el('button', { className: 'btn primary', textContent: 'Create task', onclick: (e) => busy(e.currentTarget, async () => {
     msg.style.display = 'none';
     try {
-      const t = await api('/tasks', { project_id: pSel.value, title: title.value, prompt: prompt.value, files: files.value, check_cmd: check.value, engine: engine.value, model: engine.value === 'local' ? localModel.value : cm.value, service_id: svc.value || undefined, allow_escalation: esc.checked, ai_review: review.checked, plan_first: plan.checked });
+      const t = await api('/tasks', { project_id: pSel.value, title: title.value, prompt: prompt.value, files: files.value, check_cmd: check.value, engine: engine.value, model: engine.value === 'local' ? localModel.value : cm.value, service_id: svc.value || undefined, allow_escalation: esc.checked, ai_review: review.checked, plan_first: plan.checked, attachments: attPending.map((a) => ({ id: a.id, to_cloud: engine.value !== 'local' && !!a.to_cloud })) });
       m.close(); toast(`task #${t.id} created (waiting for your approval)`, 'ok'); await loadTasks(); location.hash = `#/tasks/${t.id}`;
     } catch (er) { msg.textContent = er.message; msg.style.display = ''; }
   }) });
   const m = modal({ title: 'New task', wide: true,
     body: el('div', {}, el('div', { className: 'form-grid' }, el('div', { className: 'full' }, field('Project', pSel)), el('div', { className: 'full' }, field('Title', title)), el('div', { className: 'full' }, field('Prompt', prompt)),
-      field('Service', svc, 'the local model can pick it from the service map'), field('Check command', check), el('div', { className: 'full' }, field('Files', files, 'aider edits these; cursor gets them as a hint')), el('div', { className: 'full' }, field('Engine', engine)), localBox),
+      field('Service', svc, 'the local model can pick it from the service map'), field('Check command', check), el('div', { className: 'full' }, field('Files', files, 'aider edits these; cursor gets them as a hint')), el('div', { className: 'full' }, field('Engine', engine)), localBox, attBox),
       cursorBox, el('label', { className: 'chk' }, review, 'advisory AI review by Cursor after checks pass (uses 1 Cursor call; never blocks merge)'), msg),
     footer: [el('button', { className: 'btn sec', textContent: 'Cancel', onclick: () => m.close() }), create] });
 }
@@ -172,7 +189,9 @@ async function renderDetail(pane, id, { stream, tab: startTab }) {
   term = terminal(id, { stream }); logHost.append(term.node);
   function setTab(t) { tab = t; logHost.style.display = t === 'log' ? '' : 'none'; diffHost.style.display = t === 'diff' ? '' : 'none'; tabLog.className = t === 'log' ? 'on' : ''; tabDiff.className = t === 'diff' ? 'on' : ''; if (t === 'diff') loadDiff(); }
   async function loadDiff() { clear(diffHost, skeletonLines(5)); try { renderDiff(diffHost, await api(`/tasks/${id}/diff`)); } catch (e) { clear(diffHost, el('div', { className: 'callout bad' }, e.message)); } }
+  let attInfo = null;
   const mpOf = (t) => S.memProps.filter((m) => m.task_id === t.id);
+  api(`/tasks/${id}`).then((d) => { attInfo = d; draw(true); }).catch(() => {});
   function draw(force) {
     const t = S.tasks.find((x) => x.id === id);
     if (!t) { clear(head, empty({ icon: '?', title: `Task #${id} not found`, text: 'It may have been deleted with its project.' })); return; }
@@ -188,6 +207,7 @@ async function renderDetail(pane, id, { stream, tab: startTab }) {
       el('dl', { className: 'kv small' }, el('dt', {}, 'Service'), el('dd', {}, t.service_name ? t.service_name + (svcPath && svcPath !== '.' ? ` (${svcPath})` : '') : '-'), el('dt', {}, 'Branch'), el('dd', {}, t.branch ? el('code', {}, t.branch) : '-'),
         el('dt', {}, 'Files'), el('dd', {}, t.files.join(', ') || '-'), el('dt', {}, 'Check'), el('dd', {}, t.check_cmd || `${t.service_name ? 'service/' : ''}project default (${p ? p.check_cmd : '?'})`), t.head_sha ? [el('dt', {}, 'Head'), el('dd', {}, el('code', {}, t.head_sha.slice(0, 10)))] : null),
       el('pre', { className: 'plain' }, t.prompt),
+      attInfo && attInfo.attachments && attInfo.attachments.length ? el('div', { className: 'small' }, `sent to Cursor: ${attInfo.sent_to_cursor ? 'yes' : 'no'}`) : null,
     ];
     if (t.context) kids.push(el('div', { className: 'small dim' }, `context bundle given to the engine: ${t.context.total_chars}/${t.context.max_chars} chars (${t.context.parts.map((x) => x.name + (x.truncated ? '*' : '')).join(', ')}); file: ${shortPath(t.context.file)}`));
     const rc = routingCard(t); if (rc) kids.push(rc);
