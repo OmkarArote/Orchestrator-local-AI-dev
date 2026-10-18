@@ -73,4 +73,25 @@ describe('M1 grep guards', () => {
   it('M4: config.js refuses the real data/log/worktree defaults under node:test', () => {
     assert.match(fs.readFileSync(path.join(ROOT, 'config.js'), 'utf8'), /NODE_TEST_CONTEXT/);
   });
+  it('M6: single-file deletes are only fsguard.removeOwnedFile (covered by the unlink guard above); attachment code never recurses', () => {
+    const src = FILES.filter((f) => /^lib\/(attachments|attachments-api|sniff|media-tools)\.js$/.test(f.rel));
+    assert.equal(src.length, 4);
+    for (const f of src) assert.ok(!/\bremoveOwnedDir\b/.test(stripComments(f.src)), `${f.rel} must not delete directories`);
+  });
+  it('M6: optional media tools (tesseract, ffmpeg, poppler, whisper, textutil, swiftc) are never executed yet; the future extractor module must be added to this allow-list on purpose', () => {
+    assert.deepEqual(hits(/(execFile|spawn|run)\(\s*['"`][^'"`]*(tesseract|ffmpeg|ffprobe|pdftotext|pdftoppm|whisper|textutil|swiftc)/, []), []);
+  });
+  it('M6: the upload header / blob reads live only in the attachments modules', () => {
+    assert.deepEqual(hits(/x-orch-upload/i, ['lib/attachments-api.js']), []);
+    assert.deepEqual(hits(/\bATTACH_DIR\b/, ['config.js', 'lib/attachments.js']), []);
+    assert.deepEqual(hits(/\bblobPath\b|\bopenBlob\b/, ['lib/attachments.js', 'lib/attachments-api.js']), []);
+  });
+  it('M6: uploads are never inflated or executed: no zlib/inflate/unzip in the sniffer or the store, no dynamic require of upload data', () => {
+    for (const f of FILES.filter((x) => /^lib\/(attachments|sniff)\.js$/.test(x.rel))) assert.ok(!/zlib|inflate|gunzip|unzip|child_process|eval\(|new Function/.test(stripComments(f.src)), f.rel);
+  });
+  it('M6: the JSON-only POST gate keeps exactly one raw-bytes exception (the upload path) in server.js', () => {
+    const src = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+    assert.equal((src.match(/isUpload/g) || []).length, 2, 'one definition, one use');
+    assert.match(src, /const isUpload = url\.pathname === '\/api\/attachments';/);
+  });
 });

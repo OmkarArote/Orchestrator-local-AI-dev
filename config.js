@@ -77,6 +77,18 @@ module.exports = {
   OPEN_DRY_RUN: env.ORCH_OPEN_DRY_RUN === '1',          // "Open in Cursor": report the command instead of launching (tests)
   // ---- Stage 4: shared context, routing, memory
   CONTEXT_DIR: env.ORCH_CONTEXT_DIR || path.join(path.dirname(env.ORCH_DB || path.join(ROOT, 'data', 'orchestrator.db')), 'context'),
+  // attachments (M6): uploaded media/documents live next to the DB (content-addressed, owner-only); every cap is overridable, decimals allowed (tests use tiny caps)
+  ATTACH_DIR: env.ORCH_ATTACH_DIR || path.join(path.dirname(env.ORCH_DB || path.join(ROOT, 'data', 'orchestrator.db')), 'attachments'),
+  UPLOAD_LIMITS: {
+    image: Math.floor(num(env.ORCH_UPLOAD_MAX_IMAGE_MB, 20) * 1048576),
+    document: Math.floor(num(env.ORCH_UPLOAD_MAX_DOC_MB, 50) * 1048576),
+    audio: Math.floor(num(env.ORCH_UPLOAD_MAX_AUDIO_MB, 100) * 1048576),
+    video: Math.floor(num(env.ORCH_UPLOAD_MAX_VIDEO_MB, 500) * 1048576),
+    text: Math.floor(num(env.ORCH_UPLOAD_MAX_TEXT_MB, 5) * 1048576), // plain text, csv, json
+  },
+  ATTACH_QUOTA_BYTES: Math.floor(num(env.ORCH_ATTACH_QUOTA_GB, 5) * 1073741824),
+  ATTACH_GC_HOURS: num(env.ORCH_ATTACH_GC_HOURS, 24), // unreferenced attachments older than this are swept
+  ATTACH_RETENTION_DAYS: num(env.ORCH_ATTACH_RETENTION_DAYS, 0), // 0 = keep linked attachments forever; N>0 = delete attachments (and their links) older than N days
   CONTEXT_MAX_CHARS: num(env.ORCH_CONTEXT_MAX_CHARS, 12000),    // cap of the whole context bundle (~3k tokens) so the 9B model keeps room
   CONTEXT_FILE_MAX_BYTES: 200 * 1024,
   LLM_MODEL: env.ORCH_ROUTER_MODEL || (env.ORCH_MODEL || 'ollama_chat/qwen2.5-coder:7b').replace(/^ollama(_chat)?\//, ''), // plain ollama model name
@@ -97,5 +109,5 @@ module.exports = {
   MAX_LINE: 4000,
   MAX_DIFF_BYTES: 400 * 1024,
   /** The orchestrator's own directories: never valid targets for service operations. */
-  ownDirs() { return [ROOT, path.dirname(this.DB_PATH), this.LOG_DIR, this.WORKTREES, this.CONTEXT_DIR]; },
+  ownDirs() { return [ROOT, path.dirname(this.DB_PATH), this.LOG_DIR, this.WORKTREES, this.CONTEXT_DIR, this.ATTACH_DIR]; },
 };

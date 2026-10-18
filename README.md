@@ -55,7 +55,7 @@ Localhost-only (Host/Origin checks, no auth, so do not expose the port), authori
 ### Development
 
 ```bash
-npm test            # 356 tests on the author machine; 346-350 on a fresh clone or CI (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
+npm test            # 399 tests on the author machine (399 pass, 0 fail, 0 skipped; same with CI=1); fresh-clone/CI count is recorded after the pull-request run (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
 npm run doctor      # same as ./setup.sh
 ```
 
@@ -65,13 +65,14 @@ Issues and pull requests are welcome. License: MIT.
 
 ---
 
-## What's new (M1-M5)
+## What's new (M1-M6)
 
 * **M1 - Cursor usage counters** (schema v5): the old daily Cursor caps are gone; every Cursor run is counted per project/service (`GET /api/cursor/usage`). Cursor still runs only after an approve-start / approve-plan / approve-escalation click.
 * **M2 - Chat** (`#/chat`): conversations with the local Ollama model (streamed, read-only, no tools), model card, `ORCH_CHAT_NUM_CTX`.
 * **M3 - Mentions**: `@project` / `@service` in chat pull in the project's memory, docs and code (lexical retrieval from the git object database, read-only, redacted).
 * **M4 - Cursor rules**: opt-in per service, preview first, explicit approve, committed only on a review branch; hand-written rules are never overwritten. This repo ships its own `.cursor/rules/`.
 * **M5 - Cross-repo features** (`#/features`): contract-first provider/consumer tasks across projects, drift check, merge-order guard with a recorded, typed override.
+* **M6 - Attachments foundation** (schema v6): safe storage for uploaded images, PDFs, Office/EPUB documents, text/CSV/JSON, audio and video (`POST /api/attachments`, see [Attachments](#attachments-m6-foundation)). Content is identified from its bytes, capped, deduplicated and kept owner-only; a model only ever sees *derived text* wrapped as untrusted data. Nothing is extracted from PDFs / Office files / media yet (later milestones) and the dashboard has no upload button yet.
 * **Safety hardening**: the real database (`data/orchestrator.db`) is opened only by `node server.js` (override on purpose with `ORCH_ALLOW_DEFAULT_DB=1`); tests and scripts must set `ORCH_DB`.
 
 # Reference
@@ -127,6 +128,7 @@ Files:
 | `lib/llm.js`, `lib/chat.js`, `lib/chat-api.js`, `lib/chat-context.js`, `lib/mentions.js`, `lib/repo-reader.js` | local-model chat, `@mentions`, read-only repository/document retrieval |
 | `lib/cursor-rules.js` | Cursor rules generation (M4) |
 | `lib/features.js`, `lib/features-api.js` | cross-repo features (M5) |
+| `lib/attachments.js`, `lib/attachments-api.js`, `lib/sniff.js`, `lib/media-tools.js` | attachments store, upload route, magic-byte sniffing + zip inspection (never inflates), optional-tool detection (M6) |
 | `lib/errors.js` | shared HTTP error helpers |
 | `.cursor/rules/` | this repository's own Cursor rules (conventions and guard rules) |
 | `.github/workflows/ci.yml` | CI: `npm test` on ubuntu and macOS, Node 22 |
@@ -277,16 +279,30 @@ Plain ES modules in `public/` (`index.html`, `style.css`, `app.js`, `js/*.js`), 
 * Toasts for results/errors, modals instead of `alert/confirm/prompt` (Esc, focus trap, type-to-confirm for deletes), skeleton and empty states, keyboard-friendly, responsive.
 * Screenshots: `docs/screens/`. Dev helpers: `scripts/dev-demo.js` (isolated seeded instance), `scripts/shot.sh` (headless Chrome screenshot), `scripts/ui-smoke.sh` (drives the UI over CDP).
 
-## Upgrading the schema (v4, v5), backups and rollback
+## Upgrading the schema (v4, v5, v6), backups and rollback
 
-* At startup an older DB is migrated automatically after a **consistent backup** `data/pre-v4-migration-<timestamp>.db` (v3 -> v4) and `data/pre-v5-migration-<timestamp>.db` (v4 -> v5) (`VACUUM INTO`), each in one transaction (expand-only: nothing is dropped,
+* At startup an older DB is migrated automatically after a **consistent backup** `data/pre-v4-migration-<timestamp>.db` (v3 -> v4) and `data/pre-v5-migration-<timestamp>.db` (v4 -> v5) and `data/pre-v6-migration-<timestamp>.db` (v5 -> v6) (`VACUUM INTO`), each in one transaction (expand-only: nothing is dropped,
   legacy columns stay). **v5** (M1) adds `cursor_usage.project_id/service_id` (back-filled from the tasks; rows of already-deleted tasks stay unattributed), rebuilds the tiny `model_roles` table so it also allows the roles `chat` and `embedding`,
   and creates the structures reserved for the next milestones in one go (`chat_conversations`, `chat_messages`, `features`, `task_artifacts`, `tasks.feature_id/feature_role/superseded_by`, `task_groups.feature_id/gate`) - nothing uses them yet. Existing projects become projects with one **legacy** service (whole repo) and keep their tasks.
+  **v6** (M6) adds the attachment tables (`attachments`, `attachment_links`, `attachment_derivations`) and rebuilds `model_roles` once more so the CHECK also allows `image`, `video`, `audio`, `document` (reserved: `lib/models.js` lists a role only once it has a consumer). It is additive; `ORCH_TEST_FAIL_MIGRATION_V6=1` is the test-only failure-injection hook.
   Earlier snapshots: `data/pre-projects-migration-*.db` (v0->v1).
 * **Rollback = restore the backup DB AND the old code together.** Older code refuses a newer DB ("schema vN is newer than this orchestrator"), and the new code cannot read an older DB without migrating it.
-  Steps: `./stop.sh`; `git checkout <old tag>`; copy the matching `pre-v5-migration-*.db` (to go back to v4 code) or `pre-v4-migration-*.db` (v3 code) over `data/orchestrator.db`; `./start.sh`. (Anything created after the migration is lost on rollback.)
+  Steps: `./stop.sh`; `git checkout <old tag>`; copy the matching `pre-v6-migration-*.db` (to go back to v5 code), `pre-v5-migration-*.db` (v4 code) or `pre-v4-migration-*.db` (v3 code) over `data/orchestrator.db`; `./start.sh`. (Anything created after the migration is lost on rollback.)
 * The test suite never touches the real data dir (`config.js` refuses real-dir fallbacks under `node --test`).
 * **The real DB is only opened by `node server.js`.** `config.js` hands out the default `data/orchestrator.db` to the server entry only (or with `ORCH_ALLOW_DEFAULT_DB=1`, on purpose) and never under `node --test` / `NODE_ENV=test`; a one-off `node -e "require('./lib/db')"`, a script or a tool must set `ORCH_DB` to a throw-away path or it fails with "refusing to open the real orchestrator DB" (`test/m15-db-guard.test.js`). Background: a stray `require` once opened and auto-migrated the live DB (a backup was made first).
+
+## Attachments (M6 foundation)
+
+Safe storage and serving primitives for images, documents, audio and video. **No extractor, vision model or upload button exists yet** (milestones M7+); this stage is the part that has to be right before anything can be attached.
+
+* **Upload**: `POST /api/attachments` with the **raw file bytes** as the body, `Content-Type: application/octet-stream`, `Content-Length` (chunked bodies get 411), the header **`X-Orch-Upload: 1`**, and optionally `X-Filename: <percent-encoded name>`. (Raw bytes, because JSON bodies are capped at 1 MiB. The custom header forces a CORS preflight that is never granted, on top of the existing Host / Origin checks.)
+  Answers `201 {id, sha256, size, kind, mime, ext, name, meta}`, or `200 ... deduped:true` when identical bytes already exist. Errors: 400 empty / mismatched length, 403 header, 411, 413 (`too_large`, `image_too_large`, `quota`), 415 (`forbidden_type`, `svg`, `unknown_binary`, `zip_generic`), 422 (`zip_bomb`, `zip_entries`, `zip_unsafe_name`, `zip_nested`, `zip_encrypted`, `zip_corrupt`, `image_unreadable`), 429 (`busy`: at most 2 uploads at once).
+* **What is accepted** is decided from the bytes only (`lib/sniff.js`); the client MIME type and the file extension never choose the type (the extension only separates csv / tsv / json among files that are already text). Accepted: PNG / JPEG / GIF / WebP, PDF, DOCX / XLSX / PPTX / EPUB / OpenDocument containers, WAV / MP3 / OGG / FLAC / M4A / AIFF, MP4 / MOV / WebM, and UTF-8 / UTF-16 text (+ CSV, TSV, JSON). Rejected whatever they are called: executables (ELF, Mach-O, PE), archives (gzip, bzip2, xz, 7z, rar, zstd, tar, generic zip), shell scripts, SVG, unknown binaries.
+* **Zip / image bombs**: zip files are classified from their central directory only (entry names + declared sizes) and are **never inflated** in this stage: entry count <= 2000, any entry <= 20 MiB declared, total <= 100 MiB declared, ratio <= 100:1 above 1 MiB, no `..` / absolute / backslash-traversal names, no encryption, no nested archives, no zip64. Images are limited to 50 megapixels by their declared dimensions.
+* **Storage**: `<ORCH_ATTACH_DIR>/<sha256[0:2]>/<sha256>` (owner-only 0600/0700). The client's file name is only a sanitised display string and is never used in a path. Uploads stream to `attachments/tmp/`, are size-capped while streaming and renamed into place; aborted uploads leave nothing behind. Every delete goes through `fsguard.removeOwnedFile` (refuses symlinks, anything outside the attachments dir, directories).
+* **Other endpoints**: `GET /api/attachments` (list + totals + limits), `GET /api/attachments/:id` (links, derivation summaries), `GET /api/attachments/:id/raw` (**images only**; `nosniff`, `CSP: sandbox`), `POST /api/attachments/:id/derive` (plain text / CSV / JSON only for now; others answer 422 `unsupported`), `POST /api/attachments/:id/delete` (409 while still linked), `POST /api/attachments/gc {older_than_hours?}`, `GET /api/media/tools` (detects optional `tesseract`, `pdftotext`/`pdftoppm` (poppler), `ffmpeg`/`ffprobe`, `whisper`, `textutil`, `swiftc`; **detect only**, nothing is run).
+* **What a model may see**: only *derived text*, never bytes or paths. `lib/attachments.js` (`exposeFor`) wraps it as `<attachment ... trust="untrusted">`, escapes anything that could close or spoof the wrapper, redacts secret-looking strings (counted), flags prompt-injection phrases, caps the size, and for cloud / Cursor engines includes **only attachments with an explicit per-attachment tick** (`attachment_links.to_cloud`, default off). Chat and tasks do not use it yet (M8 / M11).
+* **Limits per owner** (enforced when linking): 8 attachments per chat message, 20 per task.
 
 ## Cursor CLI engine
 
@@ -373,6 +389,11 @@ The dashboard shows engine + model per task and a clear badge: **local** (green,
 | `ORCH_OLLAMA_ALLOW_REMOTE` | `0` | allow a non-loopback `OLLAMA_API_BASE` |
 | `ORCH_ALLOW_DEFAULT_DB` | `0` | `1` lets code other than `node server.js` open the real `data/orchestrator.db` (normally refused; scripts, tests and `node -e` must set `ORCH_DB` instead) |
 | `ORCH_CHAT_NUM_CTX` | `16384` | chat context window in tokens (the `chat` role's `num_ctx` overrides it) |
+| `ORCH_ATTACH_DIR` | `<db dir>/attachments` | where uploaded files are stored (content-addressed, owner-only); inside the orchestrator's own directories, so never usable as a project root |
+| `ORCH_UPLOAD_MAX_IMAGE_MB` / `ORCH_UPLOAD_MAX_DOC_MB` / `ORCH_UPLOAD_MAX_AUDIO_MB` / `ORCH_UPLOAD_MAX_VIDEO_MB` / `ORCH_UPLOAD_MAX_TEXT_MB` | `20` / `50` / `100` / `500` / `5` | per-kind upload size caps in MiB (decimals allowed; text covers plain text, CSV, JSON) |
+| `ORCH_ATTACH_QUOTA_GB` | `5` | total attachment storage; an upload that would exceed it is refused (413 `quota`) |
+| `ORCH_ATTACH_GC_HOURS` | `24` | unreferenced attachments older than this are deleted by the hourly sweep (also at startup) |
+| `ORCH_ATTACH_RETENTION_DAYS` | `0` | `0` keeps linked attachments forever; `N > 0` also deletes attachments (and their links) older than N days; chat / task text is untouched |
 | `ORCH_GIT_CONFIG_NOSYSTEM` | unset | `1` makes the hardened git ignore the system git config |
 | `ORCH_TEST_ALLOW_FILE` | unset | **test-only**: allow `file://` remotes for import tests; never set in production |
 
@@ -399,6 +420,10 @@ All endpoints are on `http://127.0.0.1:<port>`. POSTs need `Content-Type: applic
 | `GET /api/cursor/usage` | - | Cursor usage counters: `today`, `total`, `by_project` (no cap) |
 | `GET /api/llm/info[?model=&num_ctx=]` | - | model card data for Chat (read-only; never loads a model) |
 | `GET/POST /api/conversations`, `GET /api/conversations/:id`, `POST /api/conversations/:id/{update,delete}` | `{title?, project_id?, model?, options?, think?}` | chat conversations |
+| `POST /api/attachments` | raw bytes, `Content-Type: application/octet-stream`, `X-Orch-Upload: 1`, `X-Filename?` | upload one file (201, or 200 when deduplicated); see Attachments |
+| `GET /api/attachments`, `GET /api/attachments/:id`, `GET /api/attachments/:id/raw` | - | list / detail / image bytes (images only) |
+| `POST /api/attachments/:id/derive`, `POST /api/attachments/:id/delete`, `POST /api/attachments/gc` | `{}` / `{}` / `{older_than_hours?}` | derive text (text/CSV/JSON), delete an unlinked attachment, sweep |
+| `GET /api/media/tools` | - | which optional media tools are installed (detect only) |
 | `POST /api/conversations/:id/messages` | `{content, think?}` | SSE stream: `meta`, `token`, `thinking`, `done` / `error`; 409 `busy` while another answer streams |
 | `GET /api/projects/:id/cursor-rules`, `GET .../cursor-rules/preview?service_id=` | - | per-service status; read-only preview with diffs + digest |
 | `POST /api/projects/:id/cursor-rules/optin`, `POST .../cursor-rules/generate` | `{service_id, enabled}`; `{service_id, approve: true, digest}` | opt-in per service; commit on a new review branch + review task (409/400 without opt-in/approval) |
