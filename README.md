@@ -55,7 +55,7 @@ Localhost-only (Host/Origin checks, no auth, so do not expose the port), authori
 ### Development
 
 ```bash
-npm test            # 422 tests on the author machine (422 pass, 0 fail, 0 skipped; same with CI=1); fresh-clone/CI count is recorded after the pull-request run (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
+npm test            # 424 tests on the author machine (424 pass, 0 fail, 0 skipped; same with CI=1); fresh-clone/CI count is recorded after the pull-request run (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
 npm run doctor      # same as ./setup.sh
 ```
 
@@ -65,7 +65,7 @@ Issues and pull requests are welcome. License: MIT.
 
 ---
 
-## What's new (M1-M12)
+## What's new (M1-M13)
 
 * **M1 - Cursor usage counters** (schema v5): the old daily Cursor caps are gone; every Cursor run is counted per project/service (`GET /api/cursor/usage`). Cursor still runs only after an approve-start / approve-plan / approve-escalation click.
 * **M2 - Chat** (`#/chat`): conversations with the local Ollama model (streamed, read-only, no tools), model card, `ORCH_CHAT_NUM_CTX`.
@@ -79,6 +79,7 @@ Issues and pull requests are welcome. License: MIT.
 * **M10 - Media roles**: `image`, `video`, `audio` and `document` (13 roles). Image and video need `vision`. Document needs a context window of at least 8192. Audio is the whisper tool preset. With no vision model, an image stays as recognised text plus a notice. A vision model receives one scaled copy (768px, metadata removed) per message.
 * **M11 - Task attachments**: the new-task form can attach files. The context bundle gains an `ATTACHMENTS` part. Local engines always get the derived text. `cursor`, `auto` and `auto-route` get it only when that attachment's "to Cursor" tick is on. The task page says whether it was sent. The file is not copied into the worktree.
 * **M12 - Audio and video**: ffmpeg extracts 16 kHz mono audio and at most 16 frames (scene change and a uniform sample, 768px, metadata stripped). Caps are 60 minutes of audio and 10 minutes of video. Whisper is used only when `whisper-cli` and `ORCH_WHISPER_MODEL` are already on the machine. Otherwise the attachment stays and the answer is "transcriber not installed". Install commands are printed, never run. Heavy media waits for the local-task lane.
+* **M13 - Prompt compaction**: `lib/prompt-compact.js` tidies whitespace, drops repeated lines and boilerplate outside code fences, shrinks long CSV and logs, and can rank paragraphs. Code fences stay byte-for-byte. Running it twice changes nothing. A chars-per-token average starts at 3.5 and is updated from real prompt sizes. The rolling chat summary stays off.
 * **Safety hardening**: the real database (`data/orchestrator.db`) is opened only by `node server.js` (override on purpose with `ORCH_ALLOW_DEFAULT_DB=1`); tests and scripts must set `ORCH_DB`.
 
 # Reference
@@ -131,7 +132,7 @@ Files:
 | `scripts/` | `dev-demo.js`, `shot.sh`, `ui-smoke.sh` (isolated demo instance, screenshots, UI smoke test) |
 | `lib/paths.js` | branch / worktree path helpers |
 | `lib/context.js`, `lib/memory.js`, `lib/router.js`, `lib/settings.js`, `lib/deps.js`, `lib/open.js` | project context bundle, memory proposals, service/engine router, per-project settings, service dependencies, "Open in Cursor" |
-| `lib/llm.js`, `lib/chat.js`, `lib/chat-api.js`, `lib/chat-context.js`, `lib/mentions.js`, `lib/repo-reader.js` | local-model chat, `@mentions`, read-only repository/document retrieval |
+| `lib/llm.js`, `lib/chat.js`, `lib/chat-api.js`, `lib/chat-context.js`, `lib/mentions.js`, `lib/repo-reader.js`, `lib/prompt-compact.js` | local-model chat, `@mentions`, read-only repository/document retrieval, prompt compaction (`scripts/prompt-eval.js` prints before/after sizes) |
 | `lib/cursor-rules.js` | Cursor rules generation (M4) |
 | `lib/features.js`, `lib/features-api.js` | cross-repo features (M5) |
 | `lib/attachments.js`, `lib/attachments-api.js`, `lib/sniff.js`, `lib/media-tools.js`, `lib/extract`, `public/js/attachments.js` | attachments store, upload route, magic-byte sniffing, tool spawning, extractors, chat attach chips (M6-M8) |
