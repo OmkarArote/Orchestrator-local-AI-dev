@@ -59,6 +59,8 @@ npm test            # 356 tests on the author machine; 346-350 on a fresh clone 
 npm run doctor      # same as ./setup.sh
 ```
 
+Continuing development in another tool (e.g. Cursor)? Start with `docs/HANDOFF-CURSOR.md` (current state, pending milestones, research, guardrails) and the approved plan in `docs/plans/t70-media-and-prompt-plan.md`.
+
 Issues and pull requests are welcome. License: MIT.
 
 ---
