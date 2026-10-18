@@ -78,8 +78,15 @@ describe('M1 grep guards', () => {
     assert.equal(src.length, 4);
     for (const f of src) assert.ok(!/\bremoveOwnedDir\b/.test(stripComments(f.src)), `${f.rel} must not delete directories`);
   });
-  it('M6: optional media tools (tesseract, ffmpeg, poppler, whisper, textutil, swiftc) are never executed yet; the future extractor module must be added to this allow-list on purpose', () => {
-    assert.deepEqual(hits(/(execFile|spawn|run)\(\s*['"`][^'"`]*(tesseract|ffmpeg|ffprobe|pdftotext|pdftoppm|whisper|textutil|swiftc)/, []), []);
+  it('M7: external media binaries are spawned only from lib/media-tools.js (argv arrays, never a shell string)', () => {
+    assert.deepEqual(hits(/(execFile|spawn|run)\(\s*['"`][^'"`]*(tesseract|ffmpeg|ffprobe|pdftotext|pdftoppm|whisper|textutil|swiftc)/, ['lib/media-tools.js']), []);
+    assert.deepEqual(hits(/\binflateRawSync\b/, ['lib/extract/zip-office.js']), []);
+    const extractors = FILES.filter((f) => f.rel.startsWith('lib/extract/'));
+    assert.ok(extractors.length >= 4, 'extractors exist');
+    for (const f of extractors) {
+      assert.ok(!/child_process|inflateRawSync/.test(stripComments(f.src)) || f.rel === 'lib/extract/zip-office.js', f.rel);
+      assert.ok(!/require\(['"][^'"]*proc['"]\)/.test(f.src), `${f.rel} must spawn tools through lib/media-tools.js`);
+    }
   });
   it('M6: the upload header / blob reads live only in the attachments modules', () => {
     assert.deepEqual(hits(/x-orch-upload/i, ['lib/attachments-api.js']), []);

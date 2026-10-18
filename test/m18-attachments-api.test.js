@@ -226,14 +226,15 @@ describe('M6 attachments API: sniffing, caps, dedupe, safety', () => {
     assert.equal((await S.get('/attachments/..%2ftasks', { allowFail: true })).status, 404);
   });
 
-  it('derive (text only in M6) + delete + gc', async () => {
+  it('derive text, csv summary, pdf degrade + delete + gc', async () => {
     const t = (await up(S, Buffer.from('a,b\r\n1,2\r\n'), { name: 'd.csv' })).json;
     const d = await S.post(`/attachments/${t.id}/derive`);
-    assert.equal(d.status, 'ok'); assert.equal(d.derivation.chars, 8); assert.equal(d.derivation.content, undefined, 'the API never returns derived text bodies in list/get either');
+    assert.equal(d.status, 'ok'); assert.ok(d.derivation.chars > 8); assert.equal(d.derivation.content, undefined, 'the API never returns derived text bodies in list/get either');
     assert.equal((await S.get(`/attachments/${t.id}`)).derivations.length, 1);
     const pdf = (await up(S, M.pdf('derive-test'), { name: 'a.pdf' })).json;
     const dp = await S.post(`/attachments/${pdf.id}/derive`, {}, { allowFail: true });
-    assert.deepEqual([dp.status, dp.json.status], [422, 'unsupported']);
+    assert.equal(dp.status, 422);
+    assert.ok(['unsupported', 'tool_missing'].includes(dp.json.status), dp.json.status);
     const del = await S.post(`/attachments/${t.id}/delete`);
     assert.equal(del.ok, true);
     assert.equal(fs.existsSync(path.join(ATT, t.sha256.slice(0, 2), t.sha256)), false, 'blob removed with the row');

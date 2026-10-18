@@ -55,7 +55,7 @@ Localhost-only (Host/Origin checks, no auth, so do not expose the port), authori
 ### Development
 
 ```bash
-npm test            # 399 tests on the author machine (399 pass, 0 fail, 0 skipped; same with CI=1); fresh-clone/CI count is recorded after the pull-request run (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
+npm test            # 405 tests on the author machine (405 pass, 0 fail, 0 skipped; same with CI=1); fresh-clone/CI count is recorded after the pull-request run (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
 npm run doctor      # same as ./setup.sh
 ```
 
@@ -65,14 +65,15 @@ Issues and pull requests are welcome. License: MIT.
 
 ---
 
-## What's new (M1-M6)
+## What's new (M1-M7)
 
 * **M1 - Cursor usage counters** (schema v5): the old daily Cursor caps are gone; every Cursor run is counted per project/service (`GET /api/cursor/usage`). Cursor still runs only after an approve-start / approve-plan / approve-escalation click.
 * **M2 - Chat** (`#/chat`): conversations with the local Ollama model (streamed, read-only, no tools), model card, `ORCH_CHAT_NUM_CTX`.
 * **M3 - Mentions**: `@project` / `@service` in chat pull in the project's memory, docs and code (lexical retrieval from the git object database, read-only, redacted).
 * **M4 - Cursor rules**: opt-in per service, preview first, explicit approve, committed only on a review branch; hand-written rules are never overwritten. This repo ships its own `.cursor/rules/`.
 * **M5 - Cross-repo features** (`#/features`): contract-first provider/consumer tasks across projects, drift check, merge-order guard with a recorded, typed override.
-* **M6 - Attachments foundation** (schema v6): safe storage for uploaded images, PDFs, Office/EPUB documents, text/CSV/JSON, audio and video (`POST /api/attachments`, see [Attachments](#attachments-m6-foundation)). Content is identified from its bytes, capped, deduplicated and kept owner-only; a model only ever sees *derived text* wrapped as untrusted data. Nothing is extracted from PDFs / Office files / media yet (later milestones) and the dashboard has no upload button yet.
+* **M6 - Attachments foundation** (schema v6): safe storage for uploaded images, PDFs, Office/EPUB documents, text/CSV/JSON, audio and video (`POST /api/attachments`, see [Attachments](#attachments-m6-foundation)). Content is identified from its bytes, capped, deduplicated and kept owner-only; a model only ever sees *derived text* wrapped as untrusted data. The dashboard has no upload button yet.
+* **M7 - Extractors**: plain text, a CSV/TSV summary (never a full dump), HTML with scripts and styles dropped, Office/EPUB/ODT via an in-memory zip reader, PDF text (poppler, else a macOS PDFKit helper, else a labelled low-fidelity pass) and image OCR with tesseract. A missing tool answers 422 `tool_missing` with the install command. Nothing is installed by the app. Audio and video are still unsupported.
 * **Safety hardening**: the real database (`data/orchestrator.db`) is opened only by `node server.js` (override on purpose with `ORCH_ALLOW_DEFAULT_DB=1`); tests and scripts must set `ORCH_DB`.
 
 # Reference
@@ -128,7 +129,7 @@ Files:
 | `lib/llm.js`, `lib/chat.js`, `lib/chat-api.js`, `lib/chat-context.js`, `lib/mentions.js`, `lib/repo-reader.js` | local-model chat, `@mentions`, read-only repository/document retrieval |
 | `lib/cursor-rules.js` | Cursor rules generation (M4) |
 | `lib/features.js`, `lib/features-api.js` | cross-repo features (M5) |
-| `lib/attachments.js`, `lib/attachments-api.js`, `lib/sniff.js`, `lib/media-tools.js` | attachments store, upload route, magic-byte sniffing + zip inspection (never inflates), optional-tool detection (M6) |
+| `lib/attachments.js`, `lib/attachments-api.js`, `lib/sniff.js`, `lib/media-tools.js`, `lib/extract` | attachments store, upload route, magic-byte sniffing, tool spawning, text/csv/html/office/pdf/image extractors (M6-M7) |
 | `lib/errors.js` | shared HTTP error helpers |
 | `.cursor/rules/` | this repository's own Cursor rules (conventions and guard rules) |
 | `.github/workflows/ci.yml` | CI: `npm test` on ubuntu and macOS, Node 22 |
@@ -293,14 +294,14 @@ Plain ES modules in `public/` (`index.html`, `style.css`, `app.js`, `js/*.js`), 
 
 ## Attachments (M6 foundation)
 
-Safe storage and serving primitives for images, documents, audio and video. **No extractor, vision model or upload button exists yet** (milestones M7+); this stage is the part that has to be right before anything can be attached.
+Safe storage for images, documents, audio and video, plus text extraction for the kinds M7 knows. **No upload button yet** (M8). Audio and video are stored and not transcribed yet (M12).
 
 * **Upload**: `POST /api/attachments` with the **raw file bytes** as the body, `Content-Type: application/octet-stream`, `Content-Length` (chunked bodies get 411), the header **`X-Orch-Upload: 1`**, and optionally `X-Filename: <percent-encoded name>`. (Raw bytes, because JSON bodies are capped at 1 MiB. The custom header forces a CORS preflight that is never granted, on top of the existing Host / Origin checks.)
   Answers `201 {id, sha256, size, kind, mime, ext, name, meta}`, or `200 ... deduped:true` when identical bytes already exist. Errors: 400 empty / mismatched length, 403 header, 411, 413 (`too_large`, `image_too_large`, `quota`), 415 (`forbidden_type`, `svg`, `unknown_binary`, `zip_generic`), 422 (`zip_bomb`, `zip_entries`, `zip_unsafe_name`, `zip_nested`, `zip_encrypted`, `zip_corrupt`, `image_unreadable`), 429 (`busy`: at most 2 uploads at once).
 * **What is accepted** is decided from the bytes only (`lib/sniff.js`); the client MIME type and the file extension never choose the type (the extension only separates csv / tsv / json among files that are already text). Accepted: PNG / JPEG / GIF / WebP, PDF, DOCX / XLSX / PPTX / EPUB / OpenDocument containers, WAV / MP3 / OGG / FLAC / M4A / AIFF, MP4 / MOV / WebM, and UTF-8 / UTF-16 text (+ CSV, TSV, JSON). Rejected whatever they are called: executables (ELF, Mach-O, PE), archives (gzip, bzip2, xz, 7z, rar, zstd, tar, generic zip), shell scripts, SVG, unknown binaries.
-* **Zip / image bombs**: zip files are classified from their central directory only (entry names + declared sizes) and are **never inflated** in this stage: entry count <= 2000, any entry <= 20 MiB declared, total <= 100 MiB declared, ratio <= 100:1 above 1 MiB, no `..` / absolute / backslash-traversal names, no encryption, no nested archives, no zip64. Images are limited to 50 megapixels by their declared dimensions.
-* **Storage**: `<ORCH_ATTACH_DIR>/<sha256[0:2]>/<sha256>` (owner-only 0600/0700). The client's file name is only a sanitised display string and is never used in a path. Uploads stream to `attachments/tmp/`, are size-capped while streaming and renamed into place; aborted uploads leave nothing behind. Every delete goes through `fsguard.removeOwnedFile` (refuses symlinks, anything outside the attachments dir, directories).
-* **Other endpoints**: `GET /api/attachments` (list + totals + limits), `GET /api/attachments/:id` (links, derivation summaries), `GET /api/attachments/:id/raw` (**images only**; `nosniff`, `CSP: sandbox`), `POST /api/attachments/:id/derive` (plain text / CSV / JSON only for now; others answer 422 `unsupported`), `POST /api/attachments/:id/delete` (409 while still linked), `POST /api/attachments/gc {older_than_hours?}`, `GET /api/media/tools` (detects optional `tesseract`, `pdftotext`/`pdftoppm` (poppler), `ffmpeg`/`ffprobe`, `whisper`, `textutil`, `swiftc`; **detect only**, nothing is run).
+* **Zip / image bombs**: classification uses the central directory only (entry names + declared sizes): entry count <= 2000, any entry <= 20 MiB declared, total <= 100 MiB declared, ratio <= 100:1 above 1 MiB, no `..` / absolute / backslash-traversal names, no encryption, no nested archives, no zip64. Images are limited to 50 megapixels by their declared dimensions. Extraction inflates Office entries in memory with `maxOutputLength` and the same caps; it never writes zip entries to disk.
+* **Storage**: `<ORCH_ATTACH_DIR>/<sha256[0:2]>/<sha256>` (owner-only 0600/0700). The client's file name is only a sanitised display string and is never used in a path. Uploads stream to `attachments/tmp/`, are size-capped while streaming and renamed into place; aborted uploads leave nothing behind. Every delete goes through `fsguard.removeOwnedFile` (refuses symlinks, anything outside the attachments dir, directories). The optional PDFKit helper, if compiled, is cached at `<ORCH_ATTACH_DIR>/bin/pdfkit-text`.
+* **Other endpoints**: `GET /api/attachments` (list + totals + limits), `GET /api/attachments/:id` (links, derivation summaries), `GET /api/attachments/:id/raw` (**images only**; `nosniff`, `CSP: sandbox`), `POST /api/attachments/:id/derive` (text, CSV summary, HTML, Office/EPUB, PDF, image OCR; audio/video and a missing tool answer 422 `unsupported` or `tool_missing` with the install command), `POST /api/attachments/:id/delete` (409 while still linked), `POST /api/attachments/gc {older_than_hours?}`, `GET /api/media/tools` (detects optional `tesseract`, `pdftotext`/`pdftoppm` (poppler), `ffmpeg`/`ffprobe`, `whisper`, `textutil`, `swiftc`). Those tools run only from `lib/media-tools.js`, and only when a derivation asks for them.
 * **What a model may see**: only *derived text*, never bytes or paths. `lib/attachments.js` (`exposeFor`) wraps it as `<attachment ... trust="untrusted">`, escapes anything that could close or spoof the wrapper, redacts secret-looking strings (counted), flags prompt-injection phrases, caps the size, and for cloud / Cursor engines includes **only attachments with an explicit per-attachment tick** (`attachment_links.to_cloud`, default off). Chat and tasks do not use it yet (M8 / M11).
 * **Limits per owner** (enforced when linking): 8 attachments per chat message, 20 per task.
 
