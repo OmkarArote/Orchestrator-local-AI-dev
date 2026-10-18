@@ -160,3 +160,14 @@ pre.plain { background: var(--surface-2); border: 1px solid var(--line); border-
 .md .md-code code { background: none; padding: 0; color: inherit; font-size: inherit; white-space: pre; } .md .md-lang { position: absolute; top: 3px; right: 8px; font-size: 10px; opacity: .6; }
 @media (max-width: 1100px) { .chat { grid-template-columns: 200px minmax(0, 1fr); height: auto; } .chat-side { grid-column: 1 / -1; } .chat-main { height: calc(100vh - 80px); } }
 @media (max-width: 720px) { .chat { grid-template-columns: 1fr; } .chat-list { max-height: 200px; } }
+
+/* chat: @mentions + context used */
+.mention-wrap { position: relative; } .mention-wrap textarea { width: 100%; }
+.mention-pop { position: absolute; left: 0; bottom: 100%; margin-bottom: 4px; width: min(520px, 100%); max-height: 260px; overflow: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); z-index: 20; padding: 4px; }
+.mention-pop[hidden] { display: none; }
+.mention-opt { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 7px; cursor: pointer; min-width: 0; } .mention-opt .mention-label { font-weight: 600; white-space: nowrap; }
+.mention-opt.on, .mention-opt:hover { background: var(--acc-soft); } .mention-kind { width: 16px; text-align: center; color: var(--dim); } .mention-kind.k-project { color: var(--purple); } .mention-kind.k-service { color: var(--acc); }
+.chip-x { border: 0; background: none; color: inherit; cursor: pointer; padding: 0 0 0 4px; font-size: 11px; opacity: .7; } .chip-x:hover { opacity: 1; }
+.context-used { max-width: min(760px, 100%); border: 1px solid var(--line); border-radius: 10px; padding: 4px 10px; font-size: 13px; background: var(--surface); } .context-used summary { cursor: pointer; font-weight: 600; color: var(--dim); }
+.ctx-mention { padding: 8px 0; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; } .ctx-mention:first-of-type { border-top: 0; }
+.ctx-list { margin: 0; padding-left: 18px; } .ctx-list li { margin: 2px 0; overflow-wrap: anywhere; }

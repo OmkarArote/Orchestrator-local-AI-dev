@@ -1,7 +1,7 @@
 // Chat page: conversation list | thread | model card. Talks to the local model only (no tools, no file access). Answers stream over a POST + SSE:
 // fetch() reads the body, and aborting the fetch (Stop button / leaving the page) aborts the upstream Ollama request on the server.
 import { el, clear, api, badge, chip, bytes, ago, empty, select, toast, toastError, confirmDialog, promptDialog, busy } from './ui.js';
-import { parseMarkdown, sseParser } from './md-parse.js';
+import { parseMarkdown, sseParser, mentionAt } from './md-parse.js';
 
 // ---------------------------------------------------------------- markdown -> DOM (textContent only)
 function inlineNodes(tokens) {
@@ -24,6 +24,31 @@ export function renderMarkdown(text) {
     else root.append(el('p', {}, ...inlineNodes(b.c)));
   }
   return root;
+}
+
+const fmtChars = (n) => (n === null || n === undefined ? '-' : n >= 1000 ? `${(n / 1000).toFixed(1)}k chars` : `${n} chars`);
+const KIND_ICON = { project: '\u25A3', service: '\u25C8', file: '\u2630' };
+
+/** Collapsible "Context used": what each @mention pulled in (layer, source, line range, size), what was skipped and why, redactions. From the stored manifest. */
+export function contextBlock(man, open = false) {
+  if (!man) return null;
+  const ments = man.mentions || [], un = man.unresolved || [];
+  if (!ments.length && !un.length) return null;
+  const head = ments.length ? `Context used: ${ments.map((m) => m.label).join(', ')} \u00b7 ${fmtChars(man.used_chars)} of ${fmtChars(man.limit_chars)}${man.redactions ? ` \u00b7 ${man.redactions} secret-like value(s) redacted` : ''}${man.sticky ? ' \u00b7 sticky' : ''}` : 'Context: no mention could be resolved';
+  const d = el('details', { className: 'context-used' }, el('summary', { textContent: head }));
+  for (const m of ments) {
+    d.append(el('div', { className: 'ctx-mention' },
+      el('div', { className: 'row' }, el('strong', { textContent: m.label }), badge(m.status === 'ok' ? 'ok' : m.status.replace('_', ' '), m.status === 'ok' ? 's-running' : 's-failed'), m.branch ? chip(`${m.branch}@${m.commit}`, 'mono') : null,
+        el('span', { className: 'small dim', textContent: `${fmtChars(m.chars)} of ${fmtChars(m.allocated)} share${m.sticky ? ' (sticky mention)' : ''}` })),
+      m.error ? el('div', { className: 'small t-bad', textContent: m.error }) : null,
+      el('ul', { className: 'ctx-list' }, ...m.included.map((i) => el('li', {}, chip(i.layer), ' ', el('code', { textContent: i.source.replace(/^[^:]*:/, '') }), i.section ? ` \u00a7 ${i.section}` : '', i.lines ? ` lines ${i.lines}` : '', el('span', { className: 'small dim', textContent: ` ${fmtChars(i.chars)}${i.truncated ? ' (truncated)' : ''}` })))),
+      m.skipped.length ? el('div', { className: 'small dim' }, 'Skipped: ', m.skipped.slice(0, 12).map((x) => `${x.source.replace(/^[^:]*:/, '')} (${x.reason})`).join('; ')) : null,
+      (m.notes || []).map((n) => el('div', { className: 'small dim', textContent: n })),
+      m.tree_left_out && (m.tree_left_out.denied || m.tree_left_out.symlink) ? el('div', { className: 'small dim', textContent: `Never read: ${m.tree_left_out.denied} secret/ignored/binary file(s), ${m.tree_left_out.symlink} symlink(s)` }) : null));
+  }
+  for (const u of un) d.append(el('div', { className: 'callout warn small', textContent: `${u.raw}: ${u.message}${u.candidates && u.candidates.length ? ` (${u.candidates.slice(0, 6).join(', ')})` : ''}` }));
+  if (man.source) d.append(el('div', { className: 'tiny dim', textContent: `Source: ${man.source}. Read-only; chat never writes to a repository.` }));
+  d.open = open; return d;
 }
 
 const CTX_CHOICES = [4096, 8192, 16384, 32768, 65536];
@@ -56,7 +81,7 @@ export async function render(main, route) {
   // ------------------------------------------------------------ actions
   const go = (id) => { location.hash = id ? `#/chat/${id}` : '#/chat'; };
   async function newChat() { const c = await api('/conversations', {}); go(c.id); }
-  async function updateConv(patch) { st.conv = { ...st.conv, ...(await api(`/conversations/${st.conv.id}/update`, patch)), messages: st.conv.messages, streaming: st.conv.streaming }; await Promise.all([loadList(), loadInfo()]); draw(); }
+  async function updateConv(patch) { await api(`/conversations/${st.conv.id}/update`, patch); await Promise.all([loadConv(selId), loadList(), loadInfo()]); draw(); }
   async function rename() { const t = await promptDialog({ title: 'Rename conversation', label: 'Title', value: st.conv.title, required: true, confirmText: 'Rename' }); if (t) await updateConv({ title: t }); }
   async function remove() {
     if (!await confirmDialog({ title: 'Delete this conversation?', message: 'The messages are deleted from the local database. This cannot be undone.', confirmText: 'Delete', danger: true })) return;
@@ -97,9 +122,10 @@ export async function render(main, route) {
   // ------------------------------------------------------------ view
   const msgNode = (m) => {
     const ctx = m.context || {};
-    if (m.role === 'user') return el('div', { className: 'msg user' }, el('div', { className: 'bubble', textContent: m.content }));
+    if (m.role === 'user') return el('div', { className: 'msg user' }, el('div', { className: 'bubble', textContent: m.content }), m.mentions && m.mentions.length ? el('div', { className: 'row end' }, ...m.mentions.map((r) => chip(r.kind === 'project' ? `@${r.project}` : `@${r.project}/${r.service}${r.file ? `:${r.file}` : ''}`, 'e-local', 'resolved mention'))) : null);
     return el('div', { className: `msg assistant ${m.status}` },
       ctx.thinking ? thinkingBlock(ctx.thinking, false) : null,
+      contextBlock(ctx.context),
       el('div', { className: 'bubble' }, m.content ? renderMarkdown(m.content) : el('span', { className: 'dim', textContent: m.status === 'streaming' ? 'still generating (started elsewhere)\u2026' : '(no answer)' })),
       (ctx.warn || []).map((w) => el('div', { className: 'callout warn small', textContent: w.message })),
       m.status === 'error' ? el('div', { className: 'callout bad small', textContent: `Failed: ${ctx.error ? ctx.error.message : 'unknown error'}${m.content ? ' (partial answer kept above)' : ''}` }) : null,
@@ -114,6 +140,7 @@ export async function render(main, route) {
   function updateLive() {
     const l = st.streaming; if (!l || !liveNodes) return;
     if (l.thinking) { if (!liveNodes.think) { liveNodes.think = thinkingBlock('', !l.answer); liveNodes.wrap.prepend(liveNodes.think); } liveNodes.think.querySelector('.think-body').textContent = l.thinking; if (l.answer && liveNodes.think.dataset.auto !== '1') { liveNodes.think.dataset.auto = '1'; liveNodes.think.open = false; } }
+    if (l.meta && l.meta.context && !liveNodes.ctxShown) { liveNodes.ctxShown = true; clear(liveNodes.ctxBox, contextBlock(l.meta.context)); }
     clear(liveNodes.bubble, l.answer ? renderMarkdown(l.answer) : el('span', { className: 'dim', textContent: l.meta ? (l.thinking ? 'thinking\u2026' : 'waiting for the model\u2026 (it may need to load first)') : 'sending\u2026' }));
     clear(liveNodes.extra, ...l.warn.map((w) => el('div', { className: 'callout warn small', textContent: w.message })), l.error ? el('div', { className: 'callout bad small', textContent: `Failed: ${l.error.message}` }) : null);
     const sc = liveNodes.scroller; if (sc.scrollHeight - sc.scrollTop - sc.clientHeight < 160) sc.scrollTop = sc.scrollHeight;
@@ -153,21 +180,67 @@ export async function render(main, route) {
     const nodes = c.messages.filter((m) => !(st.streaming && m.status === 'streaming')).map(msgNode);
     liveNodes = null;
     if (st.streaming) {
-      const l = st.streaming; const bubble = el('div', { className: 'bubble' }), extra = el('div'); const wrap = el('div', { className: 'msg assistant streaming' }, bubble, extra);
+      const l = st.streaming; const bubble = el('div', { className: 'bubble' }), extra = el('div'), ctxBox = el('div'); const wrap = el('div', { className: 'msg assistant streaming' }, ctxBox, bubble, extra);
       nodes.push(el('div', { className: 'msg user' }, el('div', { className: 'bubble', textContent: l.user })), wrap);
-      liveNodes = { wrap, bubble, extra, scroller, think: null }; clear(scroller, ...nodes); updateLive(); scroller.scrollTop = scroller.scrollHeight; return;
+      liveNodes = { wrap, bubble, extra, ctxBox, scroller, think: null, ctxShown: false }; clear(scroller, ...nodes); updateLive(); scroller.scrollTop = scroller.scrollHeight; return;
     }
     clear(scroller, ...(nodes.length ? nodes : [el('div', { className: 'small dim', style: { padding: '24px 4px' }, textContent: 'Say something. Enter sends, Shift+Enter adds a line.' })]));
     scroller.scrollTop = scroller.scrollHeight;
   }
+  // @-autocomplete state (survives redraws of the composer)
+  let ac = null, acSeq = 0, acTimer = 0;
   function drawComposer() {
     const c = st.conv; if (!c) return clear(composerBox);
     const busyOther = !st.streaming && ((st.active && st.active.conversation_id !== c.id) || c.streaming);
-    const ta = el('textarea', { rows: 3, placeholder: st.streaming ? 'Answering\u2026' : 'Message the local model\u2026', disabled: !!st.streaming || c.archived, value: st.draft, 'aria-label': 'Message', oninput: (e) => { st.draft = e.currentTarget.value; } });
-    const submit = () => { const t = ta.value.trim(); if (!t || st.streaming) return; if (busyOther) return toast('Another answer is still streaming (one at a time).', 'warn'); const think = c.think; send(t, think).catch(toastError); };
-    ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); submit(); } });
-    clear(composerBox, ta, el('div', { className: 'row end' }, busyOther ? el('span', { className: 'small t-warn', textContent: 'another answer is streaming' }) : null,
-      st.streaming ? el('button', { className: 'btn bad', textContent: '\u25A0 Stop', onclick: () => st.streaming && st.streaming.ac.abort() }) : el('button', { className: 'btn', textContent: 'Send', disabled: !!busyOther, onclick: submit })));
+    const ta = el('textarea', { rows: 3, placeholder: st.streaming ? 'Answering\u2026' : 'Message the local model\u2026  (@ to mention a project or service)', disabled: !!st.streaming || c.archived, value: st.draft, 'aria-label': 'Message', 'aria-autocomplete': 'list', 'aria-controls': 'mention-list', role: 'combobox', 'aria-expanded': 'false' });
+    const pop = el('div', { className: 'mention-pop', role: 'listbox', id: 'mention-list', hidden: true });
+    const closePop = () => { ac = null; pop.hidden = true; ta.setAttribute('aria-expanded', 'false'); ta.removeAttribute('aria-activedescendant'); };
+    const drawPop = () => {
+      if (!ac || !ac.items.length) return closePop();
+      clear(pop, ...ac.items.map((it, i) => el('div', { role: 'option', id: `mention-opt-${i}`, className: `mention-opt ${i === ac.idx ? 'on' : ''}`, 'aria-selected': String(i === ac.idx), onmousedown: (e) => { e.preventDefault(); pick(i); } },
+        el('span', { className: `mention-kind k-${it.kind}`, textContent: KIND_ICON[it.kind] || '@', 'aria-hidden': 'true' }), el('span', { className: 'mention-label', textContent: it.label }), el('span', { className: 'small dim ellipsis', textContent: it.detail || '' }))));
+      pop.hidden = false; ta.setAttribute('aria-expanded', 'true'); ta.setAttribute('aria-activedescendant', `mention-opt-${ac.idx}`);
+      const on = pop.querySelector('.on'); if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest' });
+    };
+    function pick(i) {
+      if (!ac || !ac.items[i]) return;
+      const it = ac.items[i], t = ac.token, v = ta.value, ins = `${it.insert} `;
+      ta.value = v.slice(0, t.start) + ins + v.slice(t.end); const pos = t.start + ins.length; ta.setSelectionRange(pos, pos); st.draft = ta.value; closePop(); ta.focus();
+    }
+    const lookup = () => {
+      const token = mentionAt(ta.value, ta.selectionStart);
+      clearTimeout(acTimer);
+      if (!token) return closePop();
+      const seq = ++acSeq;
+      acTimer = setTimeout(async () => {
+        try {
+          const r = await api(`/mentions/suggest?q=${encodeURIComponent(token.query)}${c.project_id ? `&project_id=${c.project_id}` : ''}`);
+          if (seq !== acSeq || !document.contains(ta)) return;
+          const cur = mentionAt(ta.value, ta.selectionStart); if (!cur) return closePop();
+          ac = { items: r.items || [], idx: 0, token: cur }; drawPop();
+        } catch { closePop(); }
+      }, 90);
+    };
+    const submit = () => { const t = ta.value.trim(); if (!t || st.streaming) return; if (busyOther) return toast('Another answer is still streaming (one at a time).', 'warn'); closePop(); send(t, c.think).catch(toastError); };
+    ta.addEventListener('input', () => { st.draft = ta.value; lookup(); });
+    ta.addEventListener('click', lookup);
+    ta.addEventListener('blur', () => setTimeout(closePop, 150));
+    ta.addEventListener('keydown', (e) => {
+      if (ac && ac.items.length && !pop.hidden) {
+        if (e.key === 'ArrowDown') { e.preventDefault(); ac.idx = (ac.idx + 1) % ac.items.length; return drawPop(); }
+        if (e.key === 'ArrowUp') { e.preventDefault(); ac.idx = (ac.idx - 1 + ac.items.length) % ac.items.length; return drawPop(); }
+        if (e.key === 'Enter' || e.key === 'Tab') { if (!e.isComposing) { e.preventDefault(); return pick(ac.idx); } }
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); return closePop(); }
+      }
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); submit(); }
+    });
+    const sticky = c.mentions_view || [];
+    clear(composerBox,
+      sticky.length ? el('div', { className: 'row small', title: 'Follow-up questions keep using these (fresh code is retrieved each time). Remove one to stop.' }, el('span', { className: 'dim', textContent: 'Sticky context:' }),
+        ...sticky.map((m) => el('span', { className: 'chip e-local' }, m.label, el('button', { className: 'chip-x', type: 'button', 'aria-label': `Remove ${m.label}`, title: 'Remove', textContent: '\u2715', onclick: (e) => busy(e.currentTarget, () => updateConv({ mentions: sticky.filter((x) => x !== m) })) })))) : null,
+      el('div', { className: 'mention-wrap' }, pop, ta),
+      el('div', { className: 'row end' }, busyOther ? el('span', { className: 'small t-warn', textContent: 'another answer is streaming' }) : null,
+        st.streaming ? el('button', { className: 'btn bad', textContent: '\u25A0 Stop', onclick: () => st.streaming && st.streaming.ac.abort() }) : el('button', { className: 'btn', textContent: 'Send', disabled: !!busyOther, onclick: submit })));
     if (!st.streaming && !busyOther) setTimeout(() => { if (st.alive && document.contains(ta)) ta.focus({ preventScroll: true }); }, 0);
   }
 

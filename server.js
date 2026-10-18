@@ -386,6 +386,7 @@ async function serviceApi(req, res, url) {
   return sendJson(res, 200, svc.serviceView(project, store.getService(service.id)));
 }
 
+chat.setContextProvider(require('./lib/chat-context').provider); // @project / @service mentions (read-only context)
 const chatApi = require('./lib/chat-api')({ sendJson, fail, readJson });
 
 async function memoryApi(req, res, url) {
@@ -569,7 +570,7 @@ async function api(req, res, url) {
   if (url.pathname.startsWith('/api/groups')) return groupApi(req, res, url);
   if (url.pathname.startsWith('/api/services/')) return serviceApi(req, res, url);
   if (url.pathname.startsWith('/api/memory-proposals')) return memoryApi(req, res, url);
-  if (url.pathname.startsWith('/api/conversations') || url.pathname === '/api/llm/info') return chatApi(req, res, url);
+  if (url.pathname.startsWith('/api/conversations') || url.pathname === '/api/llm/info' || url.pathname.startsWith('/api/mentions/')) return chatApi(req, res, url);
   if (url.pathname.startsWith('/api/projects')) return projectsApi(req, res, url);
   const m = url.pathname.match(/^\/api\/tasks(?:\/(\d+)(?:\/([a-z-]+))?)?$/);
   if (!m) return fail(res, 404, 'unknown endpoint');

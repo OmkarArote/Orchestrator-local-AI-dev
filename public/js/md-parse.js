@@ -70,3 +70,15 @@ export function sseParser() {
     },
   };
 }
+
+/** The @mention being typed at the caret: { start, end, query } or null. Same boundary rule as the server (an '@' glued to a word is an email, not a mention). */
+export function mentionAt(text, caret) {
+  const before = String(text).slice(0, caret);
+  const m = /(^|[\s(\[{,;:"'])@([\w./:-]{0,140})$/.exec(before);
+  if (!m) return null;
+  const fence = (before.match(/```/g) || []).length % 2 === 1; // inside an open code fence: not a mention
+  if (fence) return null;
+  const start = caret - m[2].length - 1;
+  let end = caret; const rest = String(text).slice(caret).match(/^[\w./:-]*/); if (rest) end += rest[0].length;
+  return { start, end, query: m[2] };
+}

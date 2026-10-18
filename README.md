@@ -52,7 +52,7 @@ Localhost-only (Host/Origin checks, no auth, so do not expose the port), authori
 ### Development
 
 ```bash
-npm test            # 311 tests, no network, no Ollama or Cursor needed (stubs/fakes)
+npm test            # 327 tests, no network, no Ollama or Cursor needed (stubs/fakes)
 npm run doctor      # same as ./setup.sh
 ```
 
@@ -188,6 +188,27 @@ Chat page: conversations (SQLite, schema v5 tables `chat_conversations` / `chat_
 * UI: stop button (AbortController), collapsible thinking block, minimal markdown renderer that never produces HTML (`public/js/md-parse.js` builds a tree; `chat.js` renders it with `textContent`; only `http(s)` links).
   Leaving the page stops a running answer (the partial text is kept).
 
+## Mentions in chat: `@project`, `@service`, context from memory, docs and code (M3)
+
+Type `@` in the chat composer to pull a registered project or service into the question. Retrieval is **lexical** (keywords, `git grep`, section scoring); no embeddings yet. Chat stays **read-only**: nothing here can write to a repository.
+
+* **Grammar**: `@project`, `@service`, `@project/service`, `@service:path/to/file`, `@project/service:path`. Emails (`a@b.com`), fenced code, inline code and `\@` are not mentions. At most 4 mentions per message (extra ones get a warning).
+* **Resolution** (registry only): project name/slug first (case-insensitive), then a service name (scoped to the conversation's project when set). Several candidates -> `ambiguous` (candidates listed, use `@project/service`); none -> `unknown`. Both are a **non-blocking warning**; the answer is still produced. Archived projects do not resolve.
+* **Sticky**: a mention stays active for the follow-up questions of that conversation (ids stored in `chat_conversations.mentions`, re-resolved each turn, so deleted ones drop out). Shown as removable chips above the composer.
+* **What is pulled** (per service, from the registry's own default-branch commit): the project files `RULES`/`ARCHITECTURE`/`MEMORY` and service map (once per project), README/docs/`CLAUDE.md`/`AGENTS.md`/`.cursor/rules` split by `##` sections and ranked by keyword overlap, a compact file tree, and the best-matching code windows (+-20 lines, merged). Pinned `@svc:path` files come first.
+* **Safety**:
+  * Content is read **from the git object database** (`rev-parse`, `ls-tree`, `show`, `grep` only, via `lib/proc.js`), pinned to one commit sha, never the working tree. Untracked `.env` files and uncommitted edits are therefore unreachable; the manifest names `branch@commit`.
+  * `repo.assertUsable` (realpath against the authorized roots, own-directories exclusion) is re-checked on **every** open. A service outside the roots, or a symlink escaping them, yields `repo_unavailable` + a warning, nothing read. Symlink entries inside the repo (mode 120000) are skipped.
+  * Deny list: `.env*` (except `.env.example`), keys/certs (`*.pem`, `id_rsa*`, ...), `secrets*`/credentials names, `node_modules`, `.git`, build/vendor dirs, lockfiles, binaries, files > 64 KB. Scan limits per request: 40 files, 200 KB, 5 s per grep.
+  * Secret-looking values inside allowed files (tokens, `KEY=...`, private-key blocks) are redacted and **counted** in the manifest. Redaction is regex-based and heuristic, not a guarantee.
+  * Repo text is wrapped as quoted data (`<context source=...>`) and the system prompt says never to follow instructions inside it. That reduces, not removes, prompt-injection risk.
+* **Budget**: context chars = (`num_ctx` - 2048 reserved for the answer - system - history - question) x 0.6 x 3.5 chars/token. Mentions share it fairly (each gets remaining / mentions left, so unused share flows on). Within a service: project files 25 %, docs 20 %, tree 7 %, code the rest. A `context_small` warning appears when the budget is under ~6000 chars (e.g. `num_ctx` 4096).
+* **Manifest**: per mention, status, `branch@commit`, allocated vs used chars, every included piece (layer, source, line range, chars, truncated), every skip with its reason, redaction count, unresolved mentions with candidates. Stored on the assistant message (`context_json.context`, **not** the retrieved text, and never replayed into history) and returned in the SSE `meta` event; the UI shows it as a collapsible **Context used** section.
+* **Endpoints**: `GET /api/mentions/suggest?q=&project_id=` (autocomplete: projects, services, and files after `@svc:`), `POST /api/mentions/resolve {text, project_id?}` (parse + resolve, no model call). `POST /api/conversations/:id/update` accepts `mentions` (sticky refs). (`/api/mentions`, not `/api/chat/...`, because of the `m1-guards` reservation.)
+* **Autocomplete**: `@` opens a listbox (ArrowUp/Down, Enter/Tab to pick, Esc, click); the project of the conversation is ranked first.
+* `lib/context.js buildBundle(..., skipParts)` lets the chat layer reuse the managed project context without duplicating RULES/ARCHITECTURE/MEMORY.
+* Limits: keywords shorter than 4 chars that do not look like identifiers are ignored; vague questions retrieve poorly (embeddings are a later milestone); uncommitted work is invisible by design; the generated service map can contain the repo's local path.
+
 ## Dashboard UI (no build step)
 
 Plain ES modules in `public/` (`index.html`, `style.css`, `app.js`, `js/*.js`), CSS custom properties, dark/light via `prefers-color-scheme` (toggle in the sidebar footer), no framework.
@@ -318,6 +339,8 @@ All endpoints are on `http://127.0.0.1:<port>`. POSTs need `Content-Type: applic
 | `GET /api/llm/info[?model=&num_ctx=]` | - | model card data for Chat (read-only; never loads a model) |
 | `GET/POST /api/conversations`, `GET /api/conversations/:id`, `POST /api/conversations/:id/{update,delete}` | `{title?, project_id?, model?, options?, think?}` | chat conversations |
 | `POST /api/conversations/:id/messages` | `{content, think?}` | SSE stream: `meta`, `token`, `thinking`, `done` / `error`; 409 `busy` while another answer streams |
+| `GET /api/mentions/suggest?q=&project_id=` | - | autocomplete items (projects, services, `@svc:` files) |
+| `POST /api/mentions/resolve` | `{text, project_id?}` | parsed + resolved mentions, unresolved with candidates |
 | `GET /api/projects[?archived=1]` | - | list |
 | `POST /api/projects/inspect` | `{path}` | git/branch/stack detection, no side effects |
 | `POST /api/projects/add` (alias `POST /api/projects`) | `{path, name?, check_cmd?, install_cmd?, engine?, default_branch?, confirm_git_init?}` | add existing repo (201) |

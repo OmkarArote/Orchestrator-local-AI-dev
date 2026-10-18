@@ -67,6 +67,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       await ev(clickText('.chat-composer button', 'Send'));
       await waitFor("document.querySelector('.msg.assistant .bubble') && document.querySelector('.msg.assistant .bubble').textContent.includes('Hello world')", 'streamed answer', 8000);
       await waitFor("document.querySelector('.chat-side').innerText.includes('Context window')", 'model card');
+      // @-autocomplete: type @bill, pick with the keyboard, send, the manifest shows up as a collapsible 'Context used'
+      await ev("document.querySelector('.chat-composer textarea').focus()"); await ev(setVal('.chat-composer textarea', 'explain @bill'));
+      await waitFor("document.querySelector('.mention-opt')", 'autocomplete popup');
+      await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowDown', code: 'ArrowDown', windowsVirtualKeyCode: 40 }); await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowUp', code: 'ArrowUp', windowsVirtualKeyCode: 38 });
+      await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' });
+      await waitFor("/@[^ ]+\\/billing-api $/.test(document.querySelector('.chat-composer textarea').value)", 'mention inserted');
+      await ev(clickText('.chat-composer button', 'Send'));
+      await waitFor("document.querySelectorAll('.msg.assistant').length >= 2 && document.querySelector('.context-used')", 'context used block', 8000);
       await waitFor("document.querySelector('.chat-item.on')", 'conversation listed');
       await ev(clickText('.chat-head button', 'Delete')); await waitFor("document.querySelector('.modal')", 'confirm'); await ev(clickText('.modal button', 'Delete')); await waitFor("!document.querySelector('.chat-item')", 'deleted');
     });
