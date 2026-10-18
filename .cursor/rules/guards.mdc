@@ -1,0 +1,15 @@
+---
+description: Source-scan guards (test/m1-guards.test.js) that every change to lib/ and server.js must respect
+globs: lib/**/*.js,server.js,config.js
+alwaysApply: false
+---
+
+`test/m1-guards.test.js` greps the source tree; a violation fails the suite. Respect these when writing code:
+
+- **Ollama only in `lib/ollama.js`** (and `config.js`): no `11434`, no `/api/chat|tags|show|pull|ps|delete` strings elsewhere. Consequently our own HTTP routes must not start with `/api/chat`; chat lives at `/api/conversations` and `/api/mentions`, `/api/llm/info`.
+- **Raw git only in `lib/proc.js`** (and `lib/safegit.js`): call `git(cwd, [args])` from `./proc`, never `execFile('git'...)`, `spawn('git'...)` or `run('git'...)`. Always an argv array, `--` before paths, cwd from `lib/repo.js` (`assertUsable`), never from a project (`git(project.` is banned; `project.path`/`project.default_branch` are legacy and banned).
+- **No recursive/destructive fs outside `lib/fsguard.js`**: no `rmSync`, `rmdirSync`, `fs.rm(`, `rimraf`, `unlinkSync`. Remove owned dirs with `fsguard.removeOwnedDir`, or rename to the trash; remove worktrees with `git worktree remove`.
+- **No shell strings**: no `exec(`/`execSync`/`spawnSync`/`shell: true`; `sh -c` only in `lib/runner.js` for the user's check command.
+- **The Cursor CLI** (`CURSOR_BIN`) is referenced only by `config.js`, `lib/runner.js`, `lib/cursor.js`, `lib/open.js`; only `runner.js` spawns it (three approval-gated kinds). Cursor daily caps must not come back.
+- Authorized roots only: resolve repos through `repo.assertUsable(service)` (realpath vs roots) before reading or writing; never follow symlinks out of a repo.
+- Chat/mention retrieval is read-only (git object database, pinned commit, deny list, redaction); keep it that way.

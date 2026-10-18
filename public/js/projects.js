@@ -4,6 +4,7 @@ import { S, loadProjects, loadServices, loadTasks, setProjectFilter, project as 
 import { addServiceModal, newProjectModal, editServiceModal, rootsCard } from './service-modals.js';
 import { newTaskModal } from './tasks.js';
 import { contextTab, memoryTab, sequencesTab, cursorUsageCard } from './project-tabs.js';
+import { cursorRulesCard, cursorRulesModal } from './cursor-rules.js';
 
 const TABS = [['services', 'Services'], ['deps', 'Dependencies'], ['context', 'Context'], ['memory', 'Memory'], ['sequences', 'Sequences'], ['settings', 'Settings']];
 
@@ -108,6 +109,7 @@ async function servicesTab(box, ctx) {
         el('button', { className: 'btn sm', textContent: 'Edit', onclick: () => editServiceModal(p, s, { onDone: redo }) }),
         el('button', { className: 'btn sm sec', textContent: 'Repo status', onclick: (e) => busy(e.currentTarget, async () => { const r = await api(`/services/${s.id}/status`); clear(st, r.usable ? [chip(`branch ${r.branch || '?'}`), ' ', chip(r.clean ? 'clean' : 'uncommitted changes', r.clean ? 's-ok' : 's-failed'), ' ', chip(`HEAD ${r.head || '-'}`, 'mono'), r.on_default_branch ? null : [' ', badge(`not on ${r.default_branch}`, 's-failed')]] : badge(r.problem || 'unusable', 's-failed')); }) }),
         el('button', { className: 'btn sm sec', textContent: 'New task', disabled: s.archived, onclick: () => newTaskModal(p.id, s.id) }),
+        el('button', { className: 'btn sm sec', textContent: 'Cursor rules', title: 'Generate .cursor/rules for this service (preview first, review branch only)', disabled: s.archived || !s.exists, onclick: () => cursorRulesModal(p, s) }),
         el('span', { style: { flex: 1 } }),
         el('button', { className: 'btn sm ghost', textContent: s.archived ? 'Unarchive' : 'Archive', onclick: (e) => busy(e.currentTarget, async () => { await api(`/services/${s.id}/${s.archived ? 'unarchive' : 'archive'}`, {}); toast(s.archived ? 'service restored' : 'service archived', 'ok'); await redo(); }) }),
         el('button', { className: 'btn sm ghost', textContent: 'Unregister', title: 'Removes the registration only; files are never deleted', onclick: async () => {
@@ -168,6 +170,7 @@ async function settingsTab(box, ctx) {
       el('div', { className: 'small dim' }, `Explicit overrides for this project: ${Object.keys(ov).length ? JSON.stringify(ov) : 'none (environment defaults apply)'}`)),
     el('div', { className: 'card' }, el('h3', {}, 'Shared .ai/ folder (optional)'), el('div', { className: 'small dim mb' }, 'Off by default. Context files are kept in the orchestrator\'s own managed copy. Opt in to import them from a service\'s repo, or export them back on a review branch.'),
       el('div', { className: 'form-grid' }, field('Service holding .ai/', aiSvc), el('div', {}, el('label', { className: 'row', style: { margin: '6px 0' } }, aiImp, 'allow import from repo'), el('label', { className: 'row', style: { margin: '6px 0' } }, aiExp, 'allow export (new branch + review task)')))),
+    cursorRulesCard(p, act),
     err, el('div', { className: 'row' }, save),
     await cursorUsageCard({ projectId: p.id }),
     dangerZone(p, ctx)));

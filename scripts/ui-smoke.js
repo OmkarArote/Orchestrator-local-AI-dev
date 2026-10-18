@@ -59,6 +59,15 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     });
     await step('task detail has approve/reject', async () => { await waitFor("document.body.innerText.includes('smoke task')", 'title'); });
     await step('project settings save', async () => { await go('#/projects/1/settings'); await waitFor("document.querySelector('#main .btn.primary')", 'settings'); await ev(clickText('#main button', 'Save settings')); await waitFor("document.querySelector('.toast')", 'toast'); });
+    await step('cursor rules: preview, opt-in, approve -> review branch (throw-away demo repo)', async () => {
+      await go('#/projects/1/settings'); await waitFor("document.querySelector('.rules-row')", 'cursor rules card');
+      await ev(clickText('.rules-row button', 'Preview')); await waitFor("document.querySelector('.rules-file') && document.querySelector('.rules-diff')", 'preview with diff');
+      if (await ev("[...document.querySelectorAll('.rules-row button')].some((b) => b.textContent.startsWith('Generate') && !b.disabled)")) throw new Error('Generate must be disabled until the service is enabled (opt-in)');
+      await ev("document.querySelector('.rules-row input[type=checkbox]').click()");
+      await waitFor("[...document.querySelectorAll('.rules-row button')].some((b) => b.textContent.startsWith('Generate') && !b.disabled)", 'generate enabled after opt-in');
+      await ev(clickText('.rules-row button', 'Generate on branch')); await waitFor("[...document.querySelectorAll('button')].some((b) => b.textContent.startsWith('Approve and create review branch'))", 'approve button (nothing written before)');
+      await ev(clickText('button', 'Approve and create review branch')); await waitFor("document.querySelector('.toast') && document.querySelector('.toast').innerText.includes('review task')", 'branch + review task toast', 8000);
+    });
     await step('models: role edit modal', async () => { await go('#/models'); await waitFor("document.body.innerText.includes('Roles')", 'roles'); await ev(clickText('button', 'Edit')); await waitFor("document.querySelector('.modal')", 'modal'); });
     await step('models: download buttons disabled', async () => { await go('#/models'); await waitFor("[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Download')", 'catalog'); const bad = await ev("[...document.querySelectorAll('button')].filter((b) => b.textContent.trim() === 'Download' && !b.disabled).length"); if (bad) throw new Error(bad + ' enabled download buttons'); });
     await step('chat: new chat, send, streamed answer rendered, model card, delete via modal', async () => {

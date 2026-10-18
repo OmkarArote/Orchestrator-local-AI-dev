@@ -1,0 +1,14 @@
+---
+description: Core conventions of the Local AI Dev Orchestrator (always on)
+globs:
+alwaysApply: true
+---
+
+- Node 22, **zero npm dependencies** (`node:sqlite`, `node:test`, global `fetch`). Do not add a package; build steps and bundlers are out too (the UI is plain ES modules).
+- Never read, print or commit `.env*`, keys or the live data (`data/`, port 4310). Tests use random ports and temp dirs only.
+- Plan first (a short written plan, then wait for approval) for architectural changes, schema/DB migrations, new endpoints families and anything touching git/fs safety.
+- Never claim a test, build or CI result you did not run. Report real counts: `CI=1 node --test --test-concurrency=4 "test/**/*.test.js"` and the same without `CI=1`.
+- Commit identity: this repo has NO local git identity on purpose and the global one must not be used. Commit with
+  `GIT_AUTHOR_NAME="Omkar Arote" GIT_AUTHOR_EMAIL="OmkarArote@users.noreply.github.com" GIT_COMMITTER_NAME="Omkar Arote" GIT_COMMITTER_EMAIL="OmkarArote@users.noreply.github.com" git commit ...`; never `git config user.*`, never force-push; push with `git push origin main`.
+- The orchestrator never writes to a service's main checkout or default branch: its own commits go to a new review branch via a throw-away worktree and are merged only by a human.
+- Details: see the other rules (`guards`, `tests`, `ui`) - they load by file type.

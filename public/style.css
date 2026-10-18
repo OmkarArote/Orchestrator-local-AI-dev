@@ -171,3 +171,9 @@ pre.plain { background: var(--surface-2); border: 1px solid var(--line); border-
 .context-used { max-width: min(760px, 100%); border: 1px solid var(--line); border-radius: 10px; padding: 4px 10px; font-size: 13px; background: var(--surface); } .context-used summary { cursor: pointer; font-weight: 600; color: var(--dim); }
 .ctx-mention { padding: 8px 0; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; } .ctx-mention:first-of-type { border-top: 0; }
 .ctx-list { margin: 0; padding-left: 18px; } .ctx-list li { margin: 2px 0; overflow-wrap: anywhere; }
+
+/* cursor rules */
+.rules-row { padding: 10px 0; border-top: 1px solid var(--line); } .rules-row:first-child { border-top: 0; }
+.rules-file { border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; background: var(--surface); } .rules-file summary { cursor: pointer; }
+.rules-diff { margin: 6px 0 2px; max-height: 320px; overflow: auto; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface-2); border-radius: 6px; padding: 8px; }
+.rules-diff .d-add { display: block; background: var(--ok-soft); } .rules-diff .d-del { display: block; background: var(--bad-soft); } .rules-diff .d-ctx { display: block; color: var(--dim); } .rules-diff .d-gap { display: block; color: var(--dim); text-align: center; }

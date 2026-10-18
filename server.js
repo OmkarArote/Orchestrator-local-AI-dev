@@ -11,6 +11,7 @@ const cursor = require('./lib/cursor');
 const { git } = require('./lib/proc');
 const repo = require('./lib/repo');
 const context = require('./lib/context');
+const cursorRules = require('./lib/cursor-rules');
 const deps = require('./lib/deps');
 const serviceOps = require('./lib/service-ops');
 const importer = require('./lib/importer');
@@ -231,9 +232,18 @@ async function projectsApi(req, res, url) {
 }
 
 
+/** Register a branch the orchestrator committed on its own (context export, Cursor rules) as a review task; it is merged only by a human approve-merge. */
+function registerReviewTask(project, r, { title, kind, what, summary, note }) {
+  const id = store.createTask({ project_id: project.id, title, prompt: `${what}\nBranch: ${r.branch}\nFiles:\n${r.files.join('\n')}\n\nReview the diff, then approve & merge like any task (it is never merged automatically).`, files: [], engine: 'local', routing_source: 'manual', service_id: r.service_id });
+  store.updateFields(id, { branch: r.branch, head_sha: r.head_sha, engine_used: kind, result_summary: summary });
+  store.transition(id, 'pending', 'review');
+  store.addEvent(id, 'git', note);
+  return id;
+}
+
 // ---------- stage 4 APIs: services, context files, routing dry-run, memory proposals ----------
 async function projectSubApi(req, res, url) {
-  const m = url.pathname.match(/^\/api\/projects\/(\d+)\/(services|context|route|groups|deps)(?:\/([a-z-]+))?$/);
+  const m = url.pathname.match(/^\/api\/projects\/(\d+)\/(services|context|route|groups|deps|cursor-rules)(?:\/([a-z-]+))?$/);
   if (!m) return fail(res, 404, 'unknown endpoint');
   const project = store.getProject(Number(m[1]));
   if (!project) return fail(res, 404, 'project not found');
@@ -250,6 +260,26 @@ async function projectSubApi(req, res, url) {
     if (!isGet && sub === 'add-existing') return sendJson(res, 201, await serviceOps.addExisting(project, body));
     if (!isGet && sub === 'create') return sendJson(res, 201, await serviceOps.createNew(project, body));
     if (!isGet && sub === 'import') return sendJson(res, 202, importer.start(project, body));
+    return fail(res, 404, 'unknown endpoint');
+  }
+  if (area === 'cursor-rules') { // M4: opt-in per service, read-only preview, explicit approve -> review branch
+    const sid = Number(isGet ? url.searchParams.get('service_id') : body.service_id);
+    const service = sid ? store.getService(sid) : null;
+    if (!sub && isGet) return sendJson(res, 200, { project: project.name, services: await cursorRules.overview(project), limits: cursorRules.LIMITS, marker: cursorRules.MARKER });
+    if (sub === 'preview' && isGet) {
+      if (!service || service.project_id !== project.id) return fail(res, 404, 'service not found in this project');
+      return sendJson(res, 200, await cursorRules.preview(project, service));
+    }
+    if (isGet || !sub) return fail(res, 404, 'unknown endpoint');
+    if (project.archived) return fail(res, 409, 'project is archived');
+    if (!service || service.project_id !== project.id) return fail(res, 404, 'service not found in this project');
+    if (sub === 'optin') return sendJson(res, 200, { ok: true, service_id: service.id, enabled: cursorRules.setOptIn(project, service, body.enabled === true) });
+    if (sub === 'generate') {
+      const r = await cursorRules.generateOnBranch(project, service, { approve: body.approve, digest: body.digest });
+      if (!r.changed) return sendJson(res, 200, { ok: true, ...r });
+      const id = registerReviewTask(project, r, { title: `Cursor rules: ${service.name} (${r.branch})`, kind: 'cursor-rules', what: `Generated Cursor rules (.cursor/rules/*.mdc, AGENTS.md pointer) for service '${service.name}' from the orchestrator's project context.\nOnly files carrying the generated-by marker are touched; hand-written files are left alone.`, summary: `cursor rules: ${r.message}`, note: `${r.message} (${r.head_sha.slice(0, 7)}); not merged - review it and approve-merge` });
+      return sendJson(res, 201, { ok: true, ...r, task: store.getTask(id) });
+    }
     return fail(res, 404, 'unknown endpoint');
   }
   if (area === 'deps') {
@@ -337,10 +367,7 @@ async function projectSubApi(req, res, url) {
       { const ai = context.aiDir(project); if (!ai.export || !ai.target) return fail(res, 409, ai.problem || '.ai/ export is disabled for this project (opt-in: set config.ai_dir {service_id, export:true})'); }
       try { r = await context.exportToRepo(project); } catch (e) { return fail(res, 500, `export failed: ${e.message}`); }
       if (!r.changed) return sendJson(res, 200, { ok: true, changed: false, message: r.message });
-      const id = store.createTask({ project_id: project.id, title: `Context update: .ai/ export (${r.branch})`, prompt: `Export of the orchestrator-managed project context to .ai/ in the repo.\nBranch: ${r.branch}\nFiles:\n${r.files.join('\n')}\n\nReview the diff, then approve & merge like any task (it is never merged automatically).`, files: [], engine: 'local', routing_source: 'manual', service_id: r.service_id });
-      store.updateFields(id, { branch: r.branch, head_sha: r.head_sha, engine_used: 'export', result_summary: `context export: ${r.message}` });
-      store.transition(id, 'pending', 'review');
-      store.addEvent(id, 'git', `${r.message} (${r.head_sha.slice(0, 7)}); not merged - review it and approve-merge`);
+      const id = registerReviewTask(project, r, { title: `Context update: .ai/ export (${r.branch})`, kind: 'export', what: 'Export of the orchestrator-managed project context to .ai/ in the repo.', summary: `context export: ${r.message}`, note: `${r.message} (${r.head_sha.slice(0, 7)}); not merged - review it and approve-merge` });
       return sendJson(res, 201, { ok: true, changed: true, task: store.getTask(id), branch: r.branch });
     }
     case 'preview': {
@@ -566,7 +593,7 @@ async function api(req, res, url) {
     const r = await cursor.getModels({ force: url.searchParams.get('refresh') === '1' });
     return sendJson(res, r.ok ? 200 : 502, { ...r, default: cfg.CURSOR_MODEL });
   }
-  if (url.pathname.startsWith('/api/projects/') && /^\/api\/projects\/\d+\/(services|context|route|groups|deps)/.test(url.pathname)) return projectSubApi(req, res, url);
+  if (url.pathname.startsWith('/api/projects/') && /^\/api\/projects\/\d+\/(services|context|route|groups|deps|cursor-rules)/.test(url.pathname)) return projectSubApi(req, res, url);
   if (url.pathname.startsWith('/api/groups')) return groupApi(req, res, url);
   if (url.pathname.startsWith('/api/services/')) return serviceApi(req, res, url);
   if (url.pathname.startsWith('/api/memory-proposals')) return memoryApi(req, res, url);

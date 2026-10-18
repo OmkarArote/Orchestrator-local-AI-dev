@@ -52,7 +52,7 @@ Localhost-only (Host/Origin checks, no auth, so do not expose the port), authori
 ### Development
 
 ```bash
-npm test            # 327 tests, no network, no Ollama or Cursor needed (stubs/fakes)
+npm test            # 337 tests, no network, no Ollama or Cursor needed (stubs/fakes)
 npm run doctor      # same as ./setup.sh
 ```
 
@@ -209,6 +209,25 @@ Type `@` in the chat composer to pull a registered project or service into the q
 * `lib/context.js buildBundle(..., skipParts)` lets the chat layer reuse the managed project context without duplicating RULES/ARCHITECTURE/MEMORY.
 * Limits: keywords shorter than 4 chars that do not look like identifiers are ignored; vague questions retrieve poorly (embeddings are a later milestone); uncommitted work is invisible by design; the generated service map can contain the repo's local path.
 
+## Cursor rules per service (`.cursor/rules/*.mdc`, M4)
+
+Optional, **off by default, opt-in per service**. Cursor outside the orchestrator (IDE, CLI, cloud agents, teammates) only sees what is committed in the repo, so the orchestrator can render its project context into Cursor rules and propose them as a normal review branch.
+
+* **What is generated** (from the managed project context, never from the live checkout), for a service `<svc>` of project `<slug>`:
+  `.cursor/rules/<slug>-rules.mdc` (RULES.md, `alwaysApply: true`, cut to 2400 chars to keep the always-on cost small),
+  `<slug>-architecture.mdc` (ARCHITECTURE.md) and `<slug>-memory.mdc` (newest MEMORY entries) as description-only rules (`alwaysApply: false`, loaded by the agent when relevant),
+  `<slug>-service-<svc>.mdc` (its service-map section, service/owner notes, dependencies, check command; `globs: <service path>/**` for sub-folder services) and an `AGENTS.md` pointer (repo root, or `<service path>/AGENTS.md`) listing the rules. Empty sources are skipped. Frontmatter is always `description`, `globs`, `alwaysApply`.
+* **Scrubbed before it can reach a repo**: secret-looking values are redacted (counted as a warning), home directories become `~`, and the service map's local checkout path (`- Repo: ...`) is dropped.
+* **Marker and idempotency**: every generated file carries `<!-- generated-by: local-ai-dev-orchestrator cursor-rules v1 | ... -->` right after the frontmatter. Output is deterministic (no timestamps), so an unchanged source gives status **in sync** and generating again does nothing. **Only files that carry the marker are ever rewritten.** A file at the same path without the marker (hand-written), a symlink, or a path behind a symlinked folder is reported and left alone; files are never deleted (marked files the renderer no longer produces are listed as orphans).
+* **Review branch only**: generation creates `ai/cursor-rules-<svc>-<timestamp>`, one commit made in a throw-away worktree from the default-branch commit that was previewed, plus a review task (`engine_used: cursor-rules`). The default branch and your checkout are never touched, nothing is pushed or merged automatically; you merge through the usual approve-merge. If an unmerged branch with exactly the same content is already waiting, nothing new is created. Commit identity = the orchestrator's usual one (`AI Dev Orchestrator <ai-orchestrator@localhost>`, forced by env so an ambient `GIT_AUTHOR_*` cannot change it).
+* **Preview first, explicit approve**: `GET .../preview` is read-only and shows each file with its state (`new`, `changed` + diff, `unchanged`, `hand_written`, `blocked`), tokens, warnings and a **digest**. `POST .../generate {service_id, approve: true, digest}` is refused (400) without `approve: true` or the digest, (409) when the service is not opted in, and (409) when the digest no longer matches (rules, services or the default branch changed since the preview: preview again).
+* **Status** per service: `in sync` / `stale` (a generated file differs from what the current context renders) / `not generated` / `blocked` (e.g. `.cursor` is a symlink in the repo) / `unavailable` (service outside the authorized roots, missing repo). Status compares against the default branch, so it stays `stale`/`not generated` (and shows "N review branch(es) waiting") until you merge.
+* **Safety**: authorized roots only (`repo.assertUsable`, realpath), git only through `lib/proc.js` (`rev-parse`, `ls-tree`, `show`, `branch`, `worktree`, `add`, `diff`, `commit`), destinations are matched against a strict allow-list (`.cursor/rules/<name>.mdc`, `AGENTS.md`), the writer walks every path component and refuses symlinks, writes atomically (temp file + rename) and the worktree is removed afterwards. No deletes anywhere.
+* **UI**: project **Settings -> Cursor rules** (every service: status badge, `enabled` checkbox, **Preview**, **Generate on branch...**) and a **Cursor rules** button on each service card. Generating shows the diff first; the only button that writes is **Approve and create review branch**.
+* **API** (`/api/projects/:id/cursor-rules...`): `GET` (status of all services), `GET /preview?service_id=`, `POST /optin {service_id, enabled}` (stored in `projects.config.cursor_rules.service_ids`, no schema change), `POST /generate {service_id, approve, digest}`.
+* **This repository's own rules** are committed in `.cursor/rules/` (`core.mdc` always on, ~350 tokens; `guards.mdc`, `tests.mdc`, `ui.mdc` by file glob): zero dependencies, the `m1-guards` constraints, portable tests, noreply commit identity / no local git identity, plan-first for architectural and DB changes, never claim tests that were not run. `test/m14-cursor-rules.test.js` lints them and checks that what they cite exists.
+* **Not done (deliberately)**: the plan's runner injection ("rules already synced in the repo => do not inline them into the Cursor prompt", worktree-local `orch-rules-*.mdc`) and shrinking `orch-context.mdc`; per-file editing of rules in the UI; local-only (git-ignored) materialisation. Whether Cursor's headless `-p` mode loads these files from a task worktree is documented behaviour but was not verified live (it would spend Pro usage).
+
 ## Dashboard UI (no build step)
 
 Plain ES modules in `public/` (`index.html`, `style.css`, `app.js`, `js/*.js`), CSS custom properties, dark/light via `prefers-color-scheme` (toggle in the sidebar footer), no framework.
@@ -339,6 +358,8 @@ All endpoints are on `http://127.0.0.1:<port>`. POSTs need `Content-Type: applic
 | `GET /api/llm/info[?model=&num_ctx=]` | - | model card data for Chat (read-only; never loads a model) |
 | `GET/POST /api/conversations`, `GET /api/conversations/:id`, `POST /api/conversations/:id/{update,delete}` | `{title?, project_id?, model?, options?, think?}` | chat conversations |
 | `POST /api/conversations/:id/messages` | `{content, think?}` | SSE stream: `meta`, `token`, `thinking`, `done` / `error`; 409 `busy` while another answer streams |
+| `GET /api/projects/:id/cursor-rules`, `GET .../cursor-rules/preview?service_id=` | - | per-service status; read-only preview with diffs + digest |
+| `POST /api/projects/:id/cursor-rules/optin`, `POST .../cursor-rules/generate` | `{service_id, enabled}`; `{service_id, approve: true, digest}` | opt-in per service; commit on a new review branch + review task (409/400 without opt-in/approval) |
 | `GET /api/mentions/suggest?q=&project_id=` | - | autocomplete items (projects, services, `@svc:` files) |
 | `POST /api/mentions/resolve` | `{text, project_id?}` | parsed + resolved mentions, unresolved with candidates |
 | `GET /api/projects[?archived=1]` | - | list |
