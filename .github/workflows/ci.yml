@@ -1,0 +1,17 @@
+name: CI
+on:
+  push: { branches: [main] }
+  pull_request:
+jobs:
+  test:
+    name: tests (${{ matrix.os }}, node 22)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix: { os: [ubuntu-latest, macos-latest] }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: git config --global user.email ci@example.com && git config --global user.name ci && git config --global init.defaultBranch main
+      - run: node --version && npm test

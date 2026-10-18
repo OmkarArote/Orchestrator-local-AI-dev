@@ -1,0 +1,27 @@
+{
+  "_note": "Curated list. weights_gb = size of the model weights layer read from the Ollama registry manifest on 2026-10-16 (read-only GET, nothing downloaded). Re-verified at runtime by POST /api/ollama/models/verify. 'fit' is computed from this machine's RAM, not stored. Roles are suggestions, not benchmarks.",
+  "verified_at": "2026-10-16",
+  "models": [
+    { "name": "ornith:9b", "kind": "chat", "weights_gb": 5.63, "roles": ["coding", "routing", "memory", "planning", "documentation"], "note": "custom/local model (only if you already have it installed)" },
+    { "name": "qwen2.5-coder:1.5b", "kind": "chat", "weights_gb": 0.99, "roles": ["routing", "memory"], "note": "tiny: router / memory proposals / quick edits" },
+    { "name": "qwen2.5-coder:3b", "kind": "chat", "weights_gb": 1.93, "roles": ["routing", "memory", "coding"], "note": "light" },
+    { "name": "qwen2.5-coder:7b", "kind": "chat", "weights_gb": 4.68, "roles": ["coding", "review", "debugging", "routing", "memory"], "note": "top coding pick for 16 GB" },
+    { "name": "qwen2.5-coder:14b", "kind": "chat", "weights_gb": 8.99, "roles": ["coding", "review"], "note": "tight on 16 GB: small num_ctx, nothing else loaded" },
+    { "name": "qwen2.5-coder:32b", "kind": "chat", "weights_gb": 19.85, "roles": ["coding"], "note": "too large for 16 GB" },
+    { "name": "deepseek-coder-v2:16b", "kind": "chat", "weights_gb": 8.91, "roles": ["coding"], "note": "MoE; tight" },
+    { "name": "deepseek-r1:7b", "kind": "chat", "weights_gb": 4.68, "roles": ["planning", "debugging"], "note": "reasoning model (slow thinking)" },
+    { "name": "deepseek-r1:8b", "kind": "chat", "weights_gb": 5.23, "roles": ["planning", "debugging"], "note": "reasoning model (slow thinking)" },
+    { "name": "deepseek-r1:14b", "kind": "chat", "weights_gb": 8.99, "roles": ["planning", "debugging"], "note": "tight" },
+    { "name": "codegemma:2b", "kind": "base", "weights_gb": 1.55, "roles": [], "note": "completion-oriented, weak as chat/edit model" },
+    { "name": "codegemma:7b", "kind": "base", "weights_gb": 5.01, "roles": [], "note": "completion-oriented, weak as chat/edit model" },
+    { "name": "starcoder2:3b", "kind": "base", "weights_gb": 1.71, "roles": [], "note": "base completion model, not instruct: poor fit for aider/chat" },
+    { "name": "starcoder2:7b", "kind": "base", "weights_gb": 4.04, "roles": [], "note": "base completion model, not instruct" },
+    { "name": "starcoder2:15b", "kind": "base", "weights_gb": 9.07, "roles": [], "note": "base completion model, not instruct" },
+    { "name": "qwen3:8b", "kind": "chat", "weights_gb": 5.23, "roles": ["planning", "requirements", "documentation"], "note": "thinking model" },
+    { "name": "qwen3:14b", "kind": "chat", "weights_gb": 9.28, "roles": ["planning", "requirements"], "note": "tight" },
+    { "name": "qwen3-coder:30b", "kind": "chat", "weights_gb": 18.56, "roles": ["coding"], "note": "too large for 16 GB" },
+    { "name": "llama3.1:8b", "kind": "chat", "weights_gb": 4.92, "roles": ["documentation", "requirements", "review"], "note": "general purpose" },
+    { "name": "gemma3:12b", "kind": "chat", "weights_gb": 7.31, "roles": ["documentation", "requirements"], "note": "tight" },
+    { "name": "phi4:14b", "kind": "chat", "weights_gb": 9.05, "roles": ["planning", "review"], "note": "tight" }
+  ]
+}

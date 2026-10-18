@@ -1,0 +1,30 @@
+{
+  "name": "local-ai-dev-orchestrator",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local-first task orchestrator: approve -> aider in git worktree -> check -> review -> approve merge",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test --test-concurrency=4 \"test/**/*.test.js\"",
+    "test:m0": "node --test --test-concurrency=4 \"test/m0-*.test.js\"",
+    "setup": "./setup.sh",
+    "doctor": "./setup.sh"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/OmkarArote/Orchestrator-local-AI-dev.git"
+  },
+  "keywords": [
+    "ollama",
+    "aider",
+    "cursor",
+    "local-ai",
+    "orchestrator",
+    "git-worktree"
+  ]
+}

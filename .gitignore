@@ -1,0 +1,11 @@
+data/
+data.backup-*/
+*.log
+logs/
+node_modules/
+.DS_Store
+test/.tmp/
+.env
+*.db
+*.db-*
+private-docs/
