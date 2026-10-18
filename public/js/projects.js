@@ -3,7 +3,7 @@ import { el, clear, api, badge, chip, statusBadge, empty, skeletonCards, skeleto
 import { S, loadProjects, loadServices, loadTasks, setProjectFilter, project as projectOf, activeServices } from './state.js';
 import { addServiceModal, newProjectModal, editServiceModal, rootsCard } from './service-modals.js';
 import { newTaskModal } from './tasks.js';
-import { contextTab, memoryTab, sequencesTab } from './project-tabs.js';
+import { contextTab, memoryTab, sequencesTab, cursorUsageCard } from './project-tabs.js';
 
 const TABS = [['services', 'Services'], ['deps', 'Dependencies'], ['context', 'Context'], ['memory', 'Memory'], ['sequences', 'Sequences'], ['settings', 'Settings']];
 
@@ -24,8 +24,9 @@ async function renderList(main, route) {
         el('button', { className: 'btn primary', textContent: '+ New project', onclick: () => newProjectModal() })),
       list.length ? el('div', { className: 'grid auto' }, ...list.map((p) => projectCard(p, open)))
         : empty({ icon: '\u25A6', title: 'No projects yet', text: 'Create a project, then import a repository from a git URL, create a new one, or register a folder that is already on this Mac.', action: el('button', { className: 'btn primary', textContent: '+ New project', onclick: () => newProjectModal() }) }),
-      el('div', { className: 'mt', id: 'roots-slot' }));
+      el('div', { className: 'mt', id: 'usage-slot' }), el('div', { className: 'mt', id: 'roots-slot' }));
     rootsCard().then((c) => { const slot = root.querySelector('#roots-slot'); if (slot) slot.append(c); });
+    cursorUsageCard().then((c) => { const slot = root.querySelector('#usage-slot'); if (slot) slot.append(c); });
   };
   clear(root, el('div', { className: 'page-head' }, el('h1', {}, 'Projects')), skeletonCards(3));
   try { await loadProjects(); await loadTasks(); } catch (e) { toastError(e); }
@@ -168,6 +169,7 @@ async function settingsTab(box, ctx) {
     el('div', { className: 'card' }, el('h3', {}, 'Shared .ai/ folder (optional)'), el('div', { className: 'small dim mb' }, 'Off by default. Context files are kept in the orchestrator\'s own managed copy. Opt in to import them from a service\'s repo, or export them back on a review branch.'),
       el('div', { className: 'form-grid' }, field('Service holding .ai/', aiSvc), el('div', {}, el('label', { className: 'row', style: { margin: '6px 0' } }, aiImp, 'allow import from repo'), el('label', { className: 'row', style: { margin: '6px 0' } }, aiExp, 'allow export (new branch + review task)')))),
     err, el('div', { className: 'row' }, save),
+    await cursorUsageCard({ projectId: p.id }),
     dangerZone(p, ctx)));
 }
 function dangerZone(p, ctx) {

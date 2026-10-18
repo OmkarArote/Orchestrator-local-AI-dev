@@ -154,7 +154,7 @@ function overrideForm(t, o, rerender) {
   const chk = (label, key) => el('label', { className: 'chk' }, el('input', { type: 'checkbox', checked: !!o[key], onchange: (e) => { o[key] = e.target.checked; } }), label);
   if (o.engine === 'cursor') box.append(chk('plan first: Cursor writes a plan (--mode plan) and waits for your approval before coding', 'plan_first'));
   if (o.engine === 'auto') box.append(chk('allow escalation to Cursor if local fails (still needs your click)', 'allow_escalation'));
-  if (o.engine !== 'local') box.append(el('div', { className: 'small t-warn' }, '\u2601 runs on Cursor servers and uses your Pro usage (daily cap applies).'));
+  if (o.engine !== 'local') box.append(el('div', { className: 'small t-warn' }, '\u2601 runs on Cursor servers and uses your Pro usage (counted in the Cursor usage counters; there is no cap, every run needs your click).'));
   return box;
 }
 
@@ -194,7 +194,7 @@ async function renderDetail(pane, id, { stream, tab: startTab }) {
       if (t.status === 'awaiting_plan') {
         planEdit[t.id] = planEdit[t.id] ?? t.plan_text;
         const ta = el('textarea', { className: 'big', style: { minHeight: '240px' }, value: planEdit[t.id], oninput: () => { planEdit[t.id] = ta.value; } });
-        pc.append(el('div', { className: 'small dim' }, 'Read-only planning run (--mode plan). You can edit the plan; implementation (a second Cursor run, counted against the cap) starts only after you approve.'), ta);
+        pc.append(el('div', { className: 'small dim' }, 'Read-only planning run (--mode plan). You can edit the plan; implementation (a second Cursor run, counted in the usage counters) starts only after you approve.'), ta);
       } else pc.append(el('pre', { className: 'plain' }, t.plan_text));
       kids.push(pc);
     }

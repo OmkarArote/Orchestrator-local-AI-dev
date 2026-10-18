@@ -166,7 +166,7 @@ function stream(req, res, task) {
 }
 
 // ---------- API ----------
-const usageView = () => store.cursorUsageToday();
+const usageView = () => store.cursorUsageToday(); // counters only (no cap): used/tasks/plans/reviews/sessions (today) + today/total buckets
 
 async function projectsApi(req, res, url) {
   const m = url.pathname.match(/^\/api\/projects(?:\/(inspect|add|create|\d+)(?:\/(archive|unarchive|update|delete))?)?$/);
@@ -409,13 +409,16 @@ async function memoryApi(req, res, url) {
   return sendJson(res, 200, { ...store.getProposal(p.id), appended: final });
 }
 
+/** Cursor CLI runs that ONE start approval of this task can cause (engine=auto starts local; escalation needs its own click and is not counted). */
+const cursorRunsOnStart = (t) => (t.engine === 'cursor' ? 1 + (t.plan_first ? 1 : 0) : 0) + (t.ai_review ? 1 : 0);
 const groupView = (g) => {
   if (!g) return g;
   const tasks = store.groupTasks(g.id);
   const keys = new Set(tasks.map((t) => { const sv = t.service_id ? store.getService(t.service_id) : null; return sv ? (repo.repoKeyOf(sv) || `svc:${sv.id}`) : 'none'; }));
   return { ...g, project_name: (store.getProject(g.project_id) || {}).name, repo_count: keys.size, cross_repo: keys.size > 1, steps: tasks.map((t) => ({
     id: t.id, step_no: t.step_no, title: t.title, status: t.status, service_id: t.service_id, service_name: t.service_name, engine: t.engine, branch: t.branch,
-    base_ref: t.base_ref, supervised: t.supervised, result_summary: t.result_summary })) };
+    base_ref: t.base_ref, supervised: t.supervised, result_summary: t.result_summary, plan_first: t.plan_first, ai_review: t.ai_review, cursor_runs_on_start: cursorRunsOnStart(t) })),
+    cursor_runs_pending: tasks.filter((t) => t.status === 'pending').reduce((n, t) => n + cursorRunsOnStart(t), 0) };
 };
 
 /** Merge plan of a sequence: read-only pre-flight per step. NO atomic cross-repo merge exists: every task is merged with its own approval; a failure never reverts the others. */
@@ -463,8 +466,6 @@ async function groupApi(req, res, url) {
   // one approval for the whole sequence: validate every step first (caps/login), then approve all pending steps; the runner executes them in order
   const cursorSteps = pending.filter((t) => t.engine === 'cursor');
   if (cursorSteps.length) {
-    const u = store.cursorUsageToday();
-    if (u.remaining < cursorSteps.length) return fail(res, 409, `daily Cursor cap: ${u.remaining} left, ${cursorSteps.length} cursor step(s) need it (${u.used}/${u.cap}); not starting the sequence`);
     const st = await cursor.getStatus();
     if (!st.installed || !st.logged_in) return fail(res, 409, `cursor CLI unavailable: ${st.error || 'not logged in'}`);
   }
@@ -481,9 +482,9 @@ async function api(req, res, url) {
   if (url.pathname === '/api/config') {
     return sendJson(res, 200, {
       engines: store.ENGINES, local_model: models.aiderModelArg(), cursor_default_model: cfg.CURSOR_MODEL, cursor_review_model: cfg.CURSOR_REVIEW_MODEL,
-      cursor_timeout_s: Math.round(cfg.CURSOR_TIMEOUT_MS / 1000), cursor_daily_cap: cfg.CURSOR_DAILY_CAP,
+      cursor_timeout_s: Math.round(cfg.CURSOR_TIMEOUT_MS / 1000),
       escalation_requires_approval: cfg.ESCALATION_REQUIRE_APPROVAL, projects_parent: cfg.PROJECTS_PARENT, home: cfg.HOME,
-      cursor_review_daily_cap: cfg.CURSOR_REVIEW_DAILY_CAP, max_parallel_cursor: cfg.MAX_PARALLEL_CURSOR, context_max_chars: cfg.CONTEXT_MAX_CHARS, router: { model: models.effective('routing').model, api: cfg.ROUTER_API, min_confidence: cfg.ROUTER_MIN_CONFIDENCE },
+      max_parallel_cursor: cfg.MAX_PARALLEL_CURSOR, context_max_chars: cfg.CONTEXT_MAX_CHARS, router: { model: models.effective('routing').model, api: cfg.ROUTER_API, min_confidence: cfg.ROUTER_MIN_CONFIDENCE },
       routing_defaults: settingsLib.DEFAULTS(), empty_check: cfg.EMPTY_CHECK,
     });
   }
@@ -551,6 +552,10 @@ async function api(req, res, url) {
   if (url.pathname === '/api/cursor/status') {
     if (req.method !== 'GET') return fail(res, 405, 'method not allowed');
     return sendJson(res, 200, { ...(await cursor.getStatus({ force: url.searchParams.get('refresh') === '1' })), usage: usageView(), runs_on: 'Cursor servers (uses Pro usage)' });
+  }
+  if (url.pathname === '/api/cursor/usage') {
+    if (req.method !== 'GET') return fail(res, 405, 'method not allowed');
+    return sendJson(res, 200, store.cursorStats());
   }
   if (url.pathname === '/api/cursor/models') {
     if (req.method !== 'GET') return fail(res, 405, 'method not allowed');
@@ -630,8 +635,6 @@ async function api(req, res, url) {
       if (!finalSvc) return fail(res, 409, 'choose a service before starting (a task runs inside exactly one service/repo); the router suggested none or several - pick one, or split the work into a sequence');
       if (task.plan_state && f.engine && f.engine !== 'cursor') return fail(res, 409, 'task already has a plan; engine must stay cursor');
       if (eng === 'cursor') {
-        const u = store.cursorUsageToday();
-        if (u.remaining <= 0) return fail(res, 409, `daily Cursor cap reached (${u.used}/${u.cap}); not starting a cursor task`);
         const st = await cursor.getStatus();
         if (!st.installed || !st.logged_in) return fail(res, 409, `cursor CLI unavailable: ${st.error || 'not logged in'}`);
       }
@@ -663,13 +666,12 @@ async function api(req, res, url) {
     case 'approve-plan': {
       if (task.status !== 'awaiting_plan') return fail(res, 409, `cannot approve plan: status is '${task.status}'`);
       if (task.supervised) return fail(res, 409, 'task is supervised; release it first');
-      const u = store.cursorUsageToday();
-      if (u.remaining <= 0) return fail(res, 409, `daily Cursor cap reached (${u.used}/${u.cap}); cannot implement today`);
+      const u = store.cursorStats();
       const f = { plan_state: 'approved' };
       if (body.plan !== undefined) { const t = String(body.plan).trim(); if (!t || t.length > 50000) return fail(res, 400, 'plan must be 1..50000 chars'); f.plan_text = t; }
       if (!store.transition(id, 'awaiting_plan', 'approved', f)) return fail(res, 409, 'status changed');
       store.addApproval(id, 'plan', 'approved', reason);
-      store.addEvent(id, 'cursor', `PLAN APPROVED by human${body.plan !== undefined ? ' (plan edited)' : ''}${reason ? ': ' + reason : ''}; implementation run queued (cursor usage today ${u.used}/${u.cap})`);
+      store.addEvent(id, 'cursor', `PLAN APPROVED by human${body.plan !== undefined ? ' (plan edited)' : ''}${reason ? ': ' + reason : ''}; implementation run queued (Cursor runs so far: ${u.today.runs} today, ${u.total.runs} total; no cap)`);
       return sendJson(res, 200, store.getTask(id));
     }
     case 'reject-plan': {
@@ -728,11 +730,10 @@ async function api(req, res, url) {
     case 'approve-escalation': {
       if (task.status !== 'awaiting_escalation') return fail(res, 409, `cannot approve escalation: status is '${task.status}'`);
       if (task.supervised) return fail(res, 409, 'task is supervised; release it first');
-      const u = store.cursorUsageToday();
-      if (u.remaining <= 0) return fail(res, 409, `daily Cursor cap reached (${u.used}/${u.cap}); cannot escalate today`);
+      const u = store.cursorStats();
       if (!store.transition(id, 'awaiting_escalation', 'approved', { escalation: 'approved' })) return fail(res, 409, 'status changed');
       store.addApproval(id, 'escalate', 'approved', reason);
-      store.addEvent(id, 'escalation', `escalation to Cursor APPROVED by human${reason ? ': ' + reason : ''}; queued for the runner (cursor usage today ${u.used}/${u.cap})`);
+      store.addEvent(id, 'escalation', `escalation to Cursor APPROVED by human${reason ? ': ' + reason : ''}; queued for the runner (Cursor runs so far: ${u.today.runs} today, ${u.total.runs} total; no cap)`);
       return sendJson(res, 200, store.getTask(id));
     }
     case 'reject-escalation': {
@@ -795,6 +796,7 @@ process.on('unhandledRejection', (e) => console.error('[unhandled]', e));
 
 server.listen(cfg.PORT, cfg.HOST, () => {
   console.log(`[${new Date().toISOString()}] orchestrator listening on http://${cfg.HOST}:${cfg.PORT} projects=${store.listProjects().length} schema=v${store.schemaVersion()} db=${cfg.DB_PATH}`);
+  if (cfg.CURSOR_CAP_ENV_IGNORED.length) console.log(`[startup] NOTICE: ${cfg.CURSOR_CAP_ENV_IGNORED.join(', ')} ${cfg.CURSOR_CAP_ENV_IGNORED.length > 1 ? 'are' : 'is'} set but IGNORED: the Cursor daily caps were removed. Usage is only counted (GET /api/cursor/usage); every Cursor run still needs your approval click.`);
   try { const swept = serviceOps.sweepJournal(); if (swept.length) console.log(`[startup] journal sweep removed ${swept.length} leftover director${swept.length === 1 ? 'y' : 'ies'}: ${swept.map((x) => x.path).join(', ')}`); } catch (e) { console.error('[startup] journal sweep failed:', e.message); }
   runner.start();
 });

@@ -6,7 +6,7 @@ makes an isolated **git worktree + branch**, runs an engine (a free local model 
 **Nothing is ever merged without your explicit approve-merge click.** Everything runs on `127.0.0.1` only.
 
 - Projects contain services (one git repo or a folder in a repo each); every task runs in exactly one service.
-- Engines per task: `local` (aider + Ollama, free), `cursor` (Cursor CLI, uses your Cursor plan, needs your approval, daily cap) or `auto` (local first, escalate to Cursor only after you approve).
+- Engines per task: `local` (aider + Ollama, free), `cursor` (Cursor CLI, uses your Cursor plan, needs your approval; runs are counted, not capped) or `auto` (local first, escalate to Cursor only after you approve).
 - Shared project rules and memory, a local router that suggests the service/engine, plan-first for complex tasks, sequences across services, an advisory AI review, and "Open in Cursor".
 - Zero npm dependencies: Node.js + a static dashboard (no build step). Models are never downloaded unless you switch that on.
 
@@ -52,7 +52,7 @@ Localhost-only (Host/Origin checks, no auth, so do not expose the port), authori
 ### Development
 
 ```bash
-npm test            # 281 tests, no network, no Ollama or Cursor needed (stubs/fakes)
+npm test            # 295 tests, no network, no Ollama or Cursor needed (stubs/fakes)
 npm run doctor      # same as ./setup.sh
 ```
 
@@ -177,13 +177,14 @@ Plain ES modules in `public/` (`index.html`, `style.css`, `app.js`, `js/*.js`), 
 * Toasts for results/errors, modals instead of `alert/confirm/prompt` (Esc, focus trap, type-to-confirm for deletes), skeleton and empty states, keyboard-friendly, responsive.
 * Screenshots: `docs/screens/`. Dev helpers: `scripts/dev-demo.js` (isolated seeded instance), `scripts/shot.sh` (headless Chrome screenshot), `scripts/ui-smoke.sh` (drives the UI over CDP).
 
-## Upgrading to schema v4, backups and rollback
+## Upgrading the schema (v4, v5), backups and rollback
 
-* At startup an older DB is migrated automatically after a **consistent backup** `data/pre-v4-migration-<timestamp>.db` (`VACUUM INTO`), in one transaction (expand-only: nothing is dropped,
-  legacy columns stay; the contract step "v5" is intentionally not done yet). Existing projects become projects with one **legacy** service (whole repo) and keep their tasks.
+* At startup an older DB is migrated automatically after a **consistent backup** `data/pre-v4-migration-<timestamp>.db` (v3 -> v4) and `data/pre-v5-migration-<timestamp>.db` (v4 -> v5) (`VACUUM INTO`), each in one transaction (expand-only: nothing is dropped,
+  legacy columns stay). **v5** (M1) adds `cursor_usage.project_id/service_id` (back-filled from the tasks; rows of already-deleted tasks stay unattributed), rebuilds the tiny `model_roles` table so it also allows the roles `chat` and `embedding`,
+  and creates the structures reserved for the next milestones in one go (`chat_conversations`, `chat_messages`, `features`, `task_artifacts`, `tasks.feature_id/feature_role/superseded_by`, `task_groups.feature_id/gate`) - nothing uses them yet. Existing projects become projects with one **legacy** service (whole repo) and keep their tasks.
   Earlier snapshots: `data/pre-projects-migration-*.db` (v0->v1).
-* **Rollback = restore the backup DB AND the old code together.** The old code refuses/misbehaves on a v4 DB, and the new code cannot read a v3 DB without migrating it.
-  Steps: `./stop.sh`; `git checkout <old tag>`; copy the `pre-v4-migration-*.db` over `data/orchestrator.db`; `./start.sh`. (Anything created after the migration is lost on rollback.)
+* **Rollback = restore the backup DB AND the old code together.** Older code refuses a newer DB ("schema vN is newer than this orchestrator"), and the new code cannot read an older DB without migrating it.
+  Steps: `./stop.sh`; `git checkout <old tag>`; copy the matching `pre-v5-migration-*.db` (to go back to v4 code) or `pre-v4-migration-*.db` (v3 code) over `data/orchestrator.db`; `./start.sh`. (Anything created after the migration is lost on rollback.)
 * The test suite never touches the real data dir (`config.js` refuses real-dir fallbacks under `node --test`).
 
 ## Cursor CLI engine
@@ -210,28 +211,37 @@ agent -p --force --trust --sandbox enabled --workspace <worktree> --model <model
   `agent -p --mode ask --trust --sandbox enabled --workspace <worktree> --model <m> ...` gets the task + diff (embedded in the prompt, capped at
   80 KB) and its answer is stored in `tasks.review_summary` and `task_events` (`kind=review`), labelled **ADVISORY**. It **never blocks** the merge;
   failures/timeouts are logged as "AI review unavailable". Read-only is enforced: if the worktree changed anyway it is reset to the commit and an error is logged.
-  Reviews use Cursor too (they count toward the cap; they are skipped if the cap is reached).
+  Reviews use Cursor too (they are counted as `reviews` in the usage counters).
 * `GET /api/cursor/status` - login check via `agent status --format json` (cached 60 s, `?refresh=1` to force) + today's usage counter.
   `GET /api/cursor/models` - parsed `agent --list-models` (cached 10 min).
 
 ### Escalation (engine `auto`)
 
 1. Local engine runs (aider), then the check. Success -> `review` as usual (Cursor is never touched).
-2. If local made no changes, failed, or the check failed: **only if the task has `allow_escalation`** and the daily cap isn't hit, the local
+2. If local made no changes, failed, or the check failed: **only if the task has `allow_escalation`**, the local
    attempt is committed on the branch (`[aider failed]`/`[check failed]` prefix), an `escalation` event is logged, and the task moves to
-   status **`awaiting_escalation`**. **Cursor is not invoked.** (If the cap is hit: task fails, event `escalation BLOCKED`; if not allowed: fails, event logged.)
+   status **`awaiting_escalation`**. **Cursor is not invoked.** (If escalation is not allowed: the task fails and an event is logged. Old tasks may carry `escalation: blocked` from the removed cap; it is never produced any more.)
 3. A human clicks **Approve escalation** (`POST /api/tasks/:id/approve-escalation`, recorded in `approvals` with stage `escalate`) -> `approved`;
    the runner resumes in the **same worktree** (on top of the local commit) with engine cursor, the failure reason and last check output in the prompt.
    **Reject escalation** (`.../reject-escalation {reason}`) -> `rejected`, nothing is sent to Cursor, the local attempt stays on the branch.
 4. Escalation never loops: after Cursor ran once, a failure is final.
-   `ORCH_ESCALATION_REQUIRE_APPROVAL=0` skips the click (still needs `allow_escalation` + cap; logged as auto-approved). Default is **approval required**.
+   `ORCH_ESCALATION_REQUIRE_APPROVAL=0` skips the click (still needs `allow_escalation`; logged as auto-approved). Default is **approval required**.
 
-### Cap / counter
+### Usage counters (there is no cap)
 
-`ORCH_CURSOR_DAILY_CAP` (default **10**) limits Cursor CLI invocations (**tasks + reviews**) per local calendar day (resets at local midnight).
-Every spawn is recorded in `cursor_usage` (even if it then fails). `engine=cursor` tasks are refused at *approve-start* when the cap is hit (and
-again right before spawning); escalations are blocked as above; reviews are skipped. The dashboard header shows `used today N/cap (tasks, reviews)`;
-`/api/health` and `/api/cursor/status` return `cursor_usage`. This counts invocations, not Cursor's real billing - it is a local guard-rail.
+The daily Cursor caps (`ORCH_CURSOR_DAILY_CAP`, `ORCH_CURSOR_REVIEW_DAILY_CAP`) were **removed**. If either variable is still set the server logs a one-time `[startup] NOTICE ... IGNORED` and carries on.
+**Cursor stays approval-only**: a Cursor run starts only after one of three clicks - *approve-start* (also a sequence's approve-start), *approve-plan* and *approve-escalation*. Nothing else spawns the agent (guard test `m1-guards`: the Cursor binary is
+only referenced from `lib/runner.js`, `lib/cursor.js` (status/models) and `lib/open.js` (command text)). The sequence *Approve start* dialog states how many Cursor runs the click will start; with the cap gone, that number is the brake.
+
+Every spawn is recorded in `cursor_usage` (even if it then fails), with `project_id`/`service_id`. `GET /api/cursor/usage` returns
+`{today, total, by_project:[{project_id, name, deleted, today, total}], day_start, since}`; each bucket is `{tasks, task_runs, plans, reviews, sessions, runs}`:
+
+* `tasks` = **distinct tasks** with at least one implementation or plan run (a plan-then-implement task counts once);
+* `task_runs` / `plans` / `reviews` = Cursor CLI invocations of that kind; `sessions` = interactive terminal sessions that were *opened* from the dashboard; `runs` = `task_runs + plans + reviews` (headless invocations).
+* "today" = the local calendar day (resets at local midnight). Usage of deleted projects stays in the totals (`deleted: true`; rows whose task was deleted before v5 show as unattributed).
+
+`/api/health.cursor_usage` and `/api/cursor/status.usage` keep the old fields for today (`used` = implementation + plan runs, `tasks` = implementation runs, `plans`, `reviews`, `sessions`) and add `today` / `total`.
+The dashboard shows `Cursor N today · T total` in the sidebar (tooltip: runs by kind) and a usage card per project (Projects page, project Settings). This counts invocations, not Cursor's real billing.
 
 The dashboard shows engine + model per task and a clear badge: **local** (green, "aider + ollama on this Mac") vs **runs on Cursor servers (uses Pro usage)** (orange).
 
@@ -252,7 +262,6 @@ The dashboard shows engine + model per task and a clear badge: **local** (green,
 | `ORCH_CURSOR_MODEL` | `auto` | default model for cursor/auto tasks |
 | `ORCH_CURSOR_REVIEW_MODEL` | `auto` | default model for the advisory review |
 | `ORCH_CURSOR_TIMEOUT_MS` / `ORCH_CURSOR_REVIEW_TIMEOUT_MS` | `900000` / `300000` | hard timeouts |
-| `ORCH_CURSOR_DAILY_CAP` | `10` | max Cursor invocations per local day |
 | `ORCH_ESCALATION_REQUIRE_APPROVAL` | `1` | `0` = auto-approve escalations (not recommended) |
 | `ORCH_CURSOR_STATUS_TTL_MS` / `ORCH_CURSOR_MODELS_TTL_MS` | `60000` / `600000` | cache TTLs |
 | `ORCH_POLL_MS` | `2000` | runner poll interval |
@@ -279,8 +288,9 @@ All endpoints are on `http://127.0.0.1:<port>`. POSTs need `Content-Type: applic
 | Method + path | Body | Effect |
 |---|---|---|
 | `GET /api/health` | - | `{ok, schema, projects, model, cursor_usage}` |
-| `GET /api/config` | - | engines, default models, cap, timeouts, escalation policy |
+| `GET /api/config` | - | engines, default models, timeouts, escalation policy |
 | `GET /api/cursor/status`, `GET /api/cursor/models` | - | see above (`?refresh=1`) |
+| `GET /api/cursor/usage` | - | Cursor usage counters: `today`, `total`, `by_project` (no cap) |
 | `GET /api/projects[?archived=1]` | - | list |
 | `POST /api/projects/inspect` | `{path}` | git/branch/stack detection, no side effects |
 | `POST /api/projects/add` (alias `POST /api/projects`) | `{path, name?, check_cmd?, install_cmd?, engine?, default_branch?, confirm_git_init?}` | add existing repo (201) |
@@ -319,7 +329,7 @@ curl -s -X POST -H 'Content-Type: application/json' http://127.0.0.1:4310/api/ta
  pending --approve-start--> approved --> running --> checking --> review --approve-merge--> done
     |                                       |           |           |
     +--reject-start--> rejected             +-----------+--> failed +--reject-merge--> rejected
-                                  (engine=auto, local failed, allow_escalation, under cap)
+                                  (engine=auto, local failed, allow_escalation)
                                             +-----------+--> awaiting_escalation --approve--> approved --> running (cursor) ...
                                                                      +--reject--> rejected
 ```
@@ -342,7 +352,7 @@ curl -s -X POST -H 'Content-Type: application/json' http://127.0.0.1:4310/api/ta
 - **Never auto-merges**: the only merge path is `approve-merge`, called by a human. It refuses unless the project repo is on its default branch, clean, the branch exists and its tip equals the reviewed `head_sha`. A failed merge is `git merge --abort`ed. AI review is advisory only.
 - **Human gates**: before start, before merge, and (default) before escalating to Cursor.
 - **Worktree isolation**: every task runs in its own `git worktree` on `ai/task-<id>`; neither aider nor Cursor is ever pointed at the project's main checkout (explicit guard for Cursor).
-- **Cursor is sandboxed and capped**: `--sandbox enabled`, `--workspace <worktree>`, hard timeout, process-group kill, daily cap, no prompt for secrets; nothing runs on Cursor unless the task's engine says so (or an approved escalation).
+- **Cursor is sandboxed and approval-only**: `--sandbox enabled`, `--workspace <worktree>`, hard timeout, process-group kill, usage counters (no cap), no prompt for secrets; nothing runs on Cursor unless the task's engine says so (or an approved escalation).
 - **Timeouts**: aider, Cursor (task and review), install, check and each git call have hard timeouts; subprocesses run in their own process group (stdin is `/dev/null`).
 - **One task at a time**; crash recovery marks tasks left `running`/`checking` by a dead process as `failed` (`awaiting_escalation` survives restarts).
 - Project paths are confined to your home directory (see Projects). Static file serving is confined to `public/`; bodies capped at 1 MB.
@@ -393,7 +403,7 @@ Policy (project settings, defaults): `complex` or `needs_thinking` -> **cursor w
 `POST /api/projects/:id/route {title,prompt}` is a dry run.
 
 ### Plan-first (Cursor)
-With `plan_first`, a Cursor task first runs `agent --mode plan` (read-only; counted against the task cap; the worktree is restored if anything changed), then stops in **`awaiting_plan`**. You edit/approve the plan (**approve-plan**) or reject it (**reject-plan**).
+With `plan_first`, a Cursor task first runs `agent --mode plan` (read-only; counted as a plan run; the worktree is restored if anything changed), then stops in **`awaiting_plan`**. You edit/approve the plan (**approve-plan**) or reject it (**reject-plan**).
 Only after approval does the implementation run, with the approved plan in the prompt. The actual model reported by the stream (`system/init`) is stored as `tasks.model_used` and shown in the task header. Note: in the one real run, the CLI reported `model: Auto` and `permissionMode: default` even with `--mode plan`; read-only behaviour is therefore also enforced by the orchestrator's check that the worktree is unchanged (it restores it if not).
 
 ### Supervised tasks and "Open in Cursor"
@@ -403,7 +413,7 @@ A task that has a worktree (`review`, `failed`, `awaiting_escalation`, `awaiting
 - Context and rules are written to `<worktree>/.cursor/rules/orch-context.mdc` (alwaysApply). That file is excluded from commits (commit pathspec + the repo's `.git/info/exclude`, which is shared by worktrees; this is a local, untracked change to the repo's `.git`).
 - Opening sets the task flag **`supervised`**: the runner will not touch it, merge/escalation/plan approvals are refused, and the dashboard shows a SUPERVISED banner. **Release** (`POST /api/tasks/:id/release`) runs the check and commits whatever is in the worktree onto the task branch (then back to `review`/`failed` as usual). You still merge by hand-approving.
 - **Manual one-time step for the IDE**: the Cursor IDE has no CLI flag to select Agent mode or the Auto model, and I deliberately do not edit Cursor's internal state DB/settings. In the IDE chat panel pick **Agent** and model **Auto** once; Cursor remembers it. The Terminal option does not need this.
-- Interactive sessions are logged (kind `session`) but are **not** counted against the daily cap (they are not started or measured by the orchestrator).
+- Interactive sessions are logged (kind `session`, shown separately as `sessions`; only the opening is recorded, the orchestrator cannot measure what happens inside).
 - Testing status: the IDE/Terminal launch paths were tested in **dry-run** mode (`ORCH_OPEN_DRY_RUN=1`, which records the exact command instead of running it; the osascript source was compile-checked with `osacompile`). They were not launched live.
 
 ### Sequences (multi-service plans)
@@ -416,12 +426,11 @@ A task that has a worktree (`review`, `failed`, `awaiting_escalation`, `awaiting
 ### Cheap fixes in this stage
 - `model_used` records the model the Cursor stream reported (shown in the UI; `auto` shows what Cursor resolved or reports).
 - An empty-template project's default check is now `git diff --check` (whitespace/conflict-marker check on the diff; built in, no shell needed) instead of `true`. A project whose check is literally `true` shows a warning.
-- Advisory-review calls have their own cap `ORCH_CURSOR_REVIEW_DAILY_CAP` (default 10). The task cap (`ORCH_CURSOR_DAILY_CAP`) counts tasks + plans only. `/api/health` shows both.
+- Advisory-review calls are counted separately (`reviews`) in the Cursor usage counters (the former review cap was removed in M1).
 
 ### New environment variables
 | Variable | Default | Meaning |
 |---|---|---|
-| `ORCH_CURSOR_REVIEW_DAILY_CAP` | `10` | daily cap for advisory reviews (separate from the task cap) |
 | `ORCH_MAX_PARALLEL_CURSOR` | `2` | max concurrent Cursor tasks (different services/worktrees) |
 | `ORCH_CONTEXT_DIR` | `<db dir>/context` | managed context files |
 | `ORCH_CONTEXT_MAX_CHARS` | `12000` | bundle cap |
@@ -460,13 +469,13 @@ Use `ORCH_CURSOR_BIN=<stub>`, `ORCH_OPEN_DRY_RUN=1`, `ORCH_OSASCRIPT_BIN=<stub>`
 - A task only passes if the check command exits 0; the default `npm run build` proves it compiles, not that behaviour is correct. Review the diff.
 - A merge conflict aborts the merge and leaves the task in `review`; resolving it is manual. Merges are refused while the project's working copy is dirty.
 - Worktrees are cut from the committed default branch - uncommitted work in the project checkout is not seen by tasks.
-- The Cursor cap counts local invocations, not real plan usage; Cursor `auto` model selection is Cursor's choice (the model the CLI reports is stored as `model_used`; with `auto` it may just say `Auto`).
+- The Cursor usage counters count local invocations, not real plan usage (and there is no cap); Cursor `auto` model selection is Cursor's choice (the model the CLI reports is stored as `model_used`; with `auto` it may just say `Auto`).
 - Escalated Cursor runs build on top of the failed local commit (kept in the branch history); the final diff includes both.
 - Project delete removes records only (repos/worktrees/branches stay and are listed); a project's slug (worktree/context dir name) does not change on rename.
 - The advisory-review and escalation-approve code paths were verified with a stub `agent` binary (to avoid spending Pro usage); only the plain `engine=cursor` task path has been exercised against the real Cursor CLI.
 - The dashboard is exercised by `scripts/ui-smoke.sh` (headless Chrome over CDP, 25 steps against an isolated demo instance); it is not part of `npm test`.
 - No authentication (localhost-only by design).
-- Stage 4 limits: supervised/Open-in-Cursor needs an existing worktree; IDE Agent-mode/Auto model must be selected once by hand; IDE and Terminal launches were only dry-run tested; interactive sessions are not counted in the cap; a local and a Cursor task can overlap; memory drafting holds the runner slot briefly; the 9B router can misjudge difficulty on vague prompts (it is only a suggestion; check the routing card); the dashboard has no automated tests.
+- Stage 4 limits: supervised/Open-in-Cursor needs an existing worktree; IDE Agent-mode/Auto model must be selected once by hand; IDE and Terminal launches were only dry-run tested; interactive sessions are only counted as opened `sessions`; a local and a Cursor task can overlap; memory drafting holds the runner slot briefly; the 9B router can misjudge difficulty on vague prompts (it is only a suggestion; check the routing card); the dashboard has no automated tests.
 - The plan-first, sequence, parallel and supervised flows were verified with the stub agent; real Cursor was called once in stage 4 (`--mode plan`) to confirm the flags and reported model.
 - **No atomic cross-repository merge**: every task is merged with its own approval; `stack` dependencies across repos are rejected.
 - **Model downloads are disabled** (`ORCH_ALLOW_MODEL_PULL=0`); the pull/delete code is covered only by fake-server tests. Only roles `coding`, `routing`, `memory` have consumers today.

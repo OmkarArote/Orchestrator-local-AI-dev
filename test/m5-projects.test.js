@@ -118,7 +118,9 @@ describe('M5 delete / archive rules', () => {
       assert.equal((await S.get('/projects')).find((p) => p.name === 'doomed'), undefined);
       assert.ok(r.context_moved_to && fs.existsSync(path.join(r.context_moved_to, 'MEMORY.md')));
       assert.equal(fs.existsSync(path.join(S.base, 'data', 'context', 'doomed')), false);
-      assert.equal((await S.get('/health')).cursor_usage.used, usage, 'cursor usage (daily cap) survives project deletion');
+      assert.equal((await S.get('/health')).cursor_usage.used, usage, 'cursor usage counters survive project deletion');
+      const byP = (await S.get('/cursor/usage')).by_project.find((r) => r.project_id === P.id);
+      assert.ok(byP && byP.deleted === true && byP.name === null && byP.total.tasks >= 1, 'usage of the deleted project stays attributed to its id, flagged deleted');
       const d = new DatabaseSync(S.dbPath, { readOnly: true });
       assert.equal(d.prepare('SELECT COUNT(*) c FROM tasks').get().c, 0);
       assert.equal(d.prepare('SELECT COUNT(*) c FROM task_events').get().c, 0);

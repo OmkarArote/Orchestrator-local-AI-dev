@@ -50,8 +50,9 @@ module.exports = {
   CURSOR_REVIEW_MODEL: env.ORCH_CURSOR_REVIEW_MODEL || 'auto',  // default model for the advisory AI review
   CURSOR_TIMEOUT_MS: num(env.ORCH_CURSOR_TIMEOUT_MS, 15 * 60 * 1000),
   CURSOR_REVIEW_TIMEOUT_MS: num(env.ORCH_CURSOR_REVIEW_TIMEOUT_MS, 5 * 60 * 1000),
-  CURSOR_DAILY_CAP: num(env.ORCH_CURSOR_DAILY_CAP, 10),         // max Cursor task invocations (tasks + plan runs) per local calendar day
-  CURSOR_REVIEW_DAILY_CAP: num(env.ORCH_CURSOR_REVIEW_DAILY_CAP, 10), // separate cap for advisory reviews (they no longer eat the task cap)
+  // The daily Cursor caps (ORCH_CURSOR_DAILY_CAP / ORCH_CURSOR_REVIEW_DAILY_CAP) were removed in schema v5: usage is only COUNTED now (db.cursorStats).
+  // Cursor stays approval-only (start / plan / escalation clicks). If the old variables are still set we log a one-time notice and ignore them.
+  CURSOR_CAP_ENV_IGNORED: ['ORCH_CURSOR_DAILY_CAP', 'ORCH_CURSOR_REVIEW_DAILY_CAP'].filter((k) => env[k] !== undefined && env[k] !== ''),
   // engine=auto: escalating local -> cursor needs a dashboard click unless this is explicitly turned off
   ESCALATION_REQUIRE_APPROVAL: env.ORCH_ESCALATION_REQUIRE_APPROVAL !== '0',
   CURSOR_STATUS_TTL_MS: num(env.ORCH_CURSOR_STATUS_TTL_MS, 60 * 1000),

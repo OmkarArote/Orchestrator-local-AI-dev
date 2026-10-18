@@ -35,6 +35,31 @@ describe('M1 grep guards', () => {
     if (!fs.existsSync(path.join(ROOT, 'lib', 'ollama.js'))) return; // adapter does not exist yet
     assert.deepEqual(hits(/11434|\/api\/(chat|tags|show|pull|ps|delete)|\/v1\/chat\/completions/, ['lib/ollama.js', 'config.js']), []);
   });
+  it('M1: the Cursor CLI (CURSOR_BIN / agent spawning) is only referenced by config.js, lib/runner.js, lib/cursor.js, lib/open.js', () => {
+    assert.deepEqual(hits(/CURSOR_BIN/, ['config.js', 'lib/runner.js', 'lib/cursor.js', 'lib/open.js']), []);
+    // ...and only runner.js (headless runs) and cursor.js (status/--version/--list-models: no usage) may SPAWN it; open.js only builds command text for osascript
+    assert.deepEqual(hits(/(execFile|spawn|run)\(\s*cfg\.CURSOR_BIN/, ['lib/runner.js', 'lib/cursor.js']), []);
+    const byFile = (rel) => FILES.find((f) => f.rel === rel);
+    assert.ok(byFile('lib/runner.js') && byFile('lib/cursor.js') && byFile('lib/open.js'), 'guarded files exist');
+    const runner = stripComments(byFile('lib/runner.js').src);
+    assert.equal((runner.match(/run\(\s*cfg\.CURSOR_BIN/g) || []).length, 1, 'exactly one Cursor spawn in runner.js');
+    const spawnAt = runner.indexOf('run(cfg.CURSOR_BIN'), fnAt = runner.indexOf('async function runCursor(');
+    assert.ok(fnAt > 0 && spawnAt > fnAt && !/\nasync function |\nfunction /.test(runner.slice(fnAt + 10, spawnAt)), 'the spawn lives inside runCursor()');
+    // cursor.js may only run the no-usage subcommands
+    const cur = stripComments(byFile('lib/cursor.js').src);
+    const calls = [...cur.matchAll(/\bexec\(\s*\[\s*'([^']+)'/g)].map((m) => m[1]);
+    assert.ok(calls.length >= 3, 'cursor.js exec() calls found');
+    for (const c of calls) assert.ok(['status', '--version', '--list-models'].includes(c), `cursor.js runs the agent with '${c}'`);
+    // runCursor is never called from anywhere but runner.js, and only for the three approved run kinds
+    assert.deepEqual(hits(/\brunCursor\s*\(/, ['lib/runner.js']), []);
+    const kinds = [...runner.matchAll(/runCursor\(ctx,\s*\{\s*kind:\s*'(\w+)'/g)].map((m) => m[1]).sort();
+    assert.deepEqual(kinds, ['plan', 'review', 'task'], 'runCursor call sites (each sits behind an approval gate: approve-start / approve-plan / approve-escalation)');
+    // usage is recorded by the runner (headless runs) and by the server for opened terminal sessions only
+    assert.deepEqual(hits(/\brecordCursorUse\s*\(/, ['lib/db.js', 'lib/runner.js', 'server.js']), []);
+  });
+  it('M1: the removed Cursor daily caps never come back (no cap config / remaining checks)', () => {
+    assert.deepEqual(hits(/CURSOR_DAILY_CAP|CURSOR_REVIEW_DAILY_CAP|cursorRemaining|cursor_daily_cap|review_remaining/, ['config.js']), []);
+  });
   it('git is never invoked with a URL/path without `--` separator in clone code', () => {
     const src = fs.readFileSync(path.join(ROOT, 'lib', 'safegit.js'), 'utf8');
     for (const m of src.matchAll(/\['(ls-remote|clone)'[^\]]*\]/g)) assert.match(m[0], /'--'/, m[0]);

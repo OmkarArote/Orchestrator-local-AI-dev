@@ -55,6 +55,30 @@ export async function sequencesTab(box, ctx) {
   clear(box, el('div', { className: 'callout info small mb' }, 'A sequence is a list of steps, usually one per service. Each step is its own task, branch, check and review; one start approval covers the whole sequence. Steps in different repositories are independent (no atomic cross-repo merge \u2013 you approve each merge).'),
     groups.length ? list : empty({ icon: '\u21E2', title: 'No sequences yet', text: 'Create one below to coordinate a change across services.' }), createForm(p, redo));
 }
+/** What one start approval of the whole sequence will cause on Cursor (counted, not capped: this sentence is the only brake before the fan-out). */
+function cursorRunsText(g) {
+  const n = g.cursor_runs_pending || 0, steps = g.steps.filter((s) => s.status === 'pending');
+  const parts = steps.filter((s) => s.cursor_runs_on_start).map((s) => `step ${s.step_no}: ${s.cursor_runs_on_start} (${[s.engine === 'cursor' ? 'implementation' : null, s.plan_first ? 'plan' : null, s.ai_review ? 'AI review' : null].filter(Boolean).join(' + ')})`);
+  const auto = steps.some((s) => s.engine === 'auto');
+  return `All ${steps.length} pending step(s) will be started in order. ` + (n ? `This will start ${n} Cursor run${n === 1 ? '' : 's'} on Cursor servers and uses your Pro usage \u2013 ${parts.join('; ')}.` : 'This will start 0 Cursor runs (local steps only).')
+    + (auto ? ' Steps with engine "auto" run locally first; escalating to Cursor needs a separate click.' : '');
+}
+/** Cursor usage counters (read-only; there is no cap). projectId=null: one row per project + total; else just that project. */
+export async function cursorUsageCard({ projectId = null } = {}) {
+  let u; try { u = await api('/cursor/usage'); } catch (e) { return el('div', { className: 'callout bad small' }, `Cursor usage: ${e.message}`); }
+  const rows = u.by_project.filter((r) => projectId === null || r.project_id === projectId);
+  const sel = projectId === null ? null : rows[0];
+  const cell = (b) => `${b.tasks} task${b.tasks === 1 ? '' : 's'} \u00B7 ${b.runs} run${b.runs === 1 ? '' : 's'}`;
+  const n = (v, w) => `${v} ${w}${v === 1 ? '' : 's'}`;
+  const extra = (b) => `${n(b.plans, 'plan')}, ${n(b.reviews, 'review')}, ${n(b.sessions, 'session')}`;
+  const tr = (label, r, bold) => el('tr', {}, el('td', {}, bold ? el('b', {}, label) : label), el('td', {}, cell(r.today)), el('td', {}, cell(r.total)), el('td', { className: 'small dim' }, extra(r.total)));
+  const body = projectId === null ? [...rows.map((r) => tr(r.project_id === null ? '(unattributed / older)' : `${r.name || '#' + r.project_id}${r.deleted && r.project_id !== null ? ' (deleted)' : ''}`, r)), tr('All projects', u, true)]
+    : [tr(sel ? 'This project' : 'This project (no Cursor runs yet)', sel || { today: emptyUsage(), total: emptyUsage() })];
+  return el('div', { className: 'card' }, el('h3', {}, 'Cursor usage'),
+    el('table', {}, el('thead', {}, el('tr', {}, el('th', {}, projectId === null ? 'Project' : ''), el('th', {}, 'Today'), el('th', {}, 'Total'), el('th', {}, 'Total: plans / reviews / sessions'))), el('tbody', {}, ...body)),
+    el('div', { className: 'small dim mt' }, 'Counted, not capped. "Tasks" = distinct tasks with an implementation or plan run; "runs" = Cursor CLI invocations (implementation + plan + review). Every run still needs your approval click.'));
+}
+const emptyUsage = () => ({ tasks: 0, runs: 0, plans: 0, reviews: 0, sessions: 0 });
 function groupCard(g, redo) {
   const c = el('div', { className: 'card' }, el('div', { className: 'head' }, el('h3', {}, `#${g.id} ${g.title}`), badge(g.dependency, 'nodot'), g.steps.every((s) => s.status === 'done') ? badge('complete', 's-done') : null));
   const tl = el('div', { className: 'stack' });
@@ -62,7 +86,7 @@ function groupCard(g, redo) {
   c.append(tl);
   const pending = g.steps.some((s) => s.status === 'pending');
   const row = el('div', { className: 'row mt' });
-  if (pending) row.append(el('button', { className: 'btn ok', textContent: 'Approve start of all pending steps', onclick: async (e) => { if (!(await confirmDialog({ title: 'Approve the whole sequence?', message: 'All pending steps will be started in order. Cursor steps use your Pro usage.', confirmText: 'Approve & start' }))) return; await busy(e.currentTarget, async () => { await api(`/groups/${g.id}/approve-start`, {}); toast('sequence approved', 'ok'); await redo(); }); } }),
+  if (pending) row.append(el('button', { className: 'btn ok', textContent: 'Approve start of all pending steps', onclick: async (e) => { if (!(await confirmDialog({ title: 'Approve the whole sequence?', message: cursorRunsText(g), confirmText: 'Approve & start' }))) return; await busy(e.currentTarget, async () => { await api(`/groups/${g.id}/approve-start`, {}); toast('sequence approved', 'ok'); await redo(); }); } }),
     el('button', { className: 'btn bad', textContent: 'Reject', onclick: async () => { const r = await promptDialog({ title: 'Reject sequence', label: 'Reason (required)', multiline: true, confirmText: 'Reject' }); if (!r) return; try { await api(`/groups/${g.id}/reject`, { reason: r }); toast('sequence rejected', 'ok'); await redo(); } catch (er) { toastError(er); } } }));
   if (g.steps.some((s) => s.status === 'review' || s.status === 'done')) row.append(el('button', { className: 'btn sec', textContent: 'Merge plan', onclick: (e) => busy(e.currentTarget, () => mergePlanModal(g)) }));
   if (row.children.length) c.append(row);

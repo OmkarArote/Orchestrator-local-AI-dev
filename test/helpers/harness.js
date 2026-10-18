@@ -49,7 +49,7 @@ async function startServer(opts = {}) {
     ORCH_AIDER_BIN: path.join(FIX, 'stub-aider.js'), ORCH_CURSOR_BIN: path.join(FIX, 'stub-agent.js'), STUB_LOG: path.join(base, 'stub-agent.log'),
     STUB_AIDER_LOG: path.join(base, 'stub-aider.log'), STUB_SLEEP_MS: '200', ORCH_OPEN_DRY_RUN: '1', ORCH_OLLAMA_REGISTRY: 'http://127.0.0.1:9', ORCH_POLL_MS: '150',
     OLLAMA_API_BASE: fake ? fake.url : 'http://127.0.0.1:9', ORCH_PROJECTS_PARENT: path.join(home, 'work'), ORCH_ROUTER_TIMEOUT_MS: '8000', ORCH_MEMORY_TIMEOUT_MS: '8000',
-    ORCH_MODEL: 'ollama_chat/ornith:9b', ORCH_CURSOR_DAILY_CAP: '50', ORCH_CURSOR_REVIEW_DAILY_CAP: '50', ORCH_ESCALATION_REQUIRE_APPROVAL: '1',
+    ORCH_MODEL: 'ollama_chat/ornith:9b', ORCH_ESCALATION_REQUIRE_APPROVAL: '1',
     ...(opts.env || {}),
   };
   delete env.ORCH_REPO;
