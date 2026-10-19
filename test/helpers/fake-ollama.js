@@ -6,8 +6,8 @@ function startFakeOllama(opts = {}) {
   const state = {
     version: '0.35.1',
     models: opts.models || [
-      { name: 'ornith:9b', model: 'ornith:9b', size: 5630000000, digest: 'sha256:aaa', modified_at: '2026-01-01T00:00:00Z', details: { family: 'qwen35', parameter_size: '9B', quantization_level: 'Q4_K_M' }, capabilities: ['completion', 'tools', 'thinking'], context_length: 262144 },
-      { name: 'deepseek-ocr:latest', model: 'deepseek-ocr:latest', size: 6690000000, digest: 'sha256:bbb', modified_at: '2026-01-01T00:00:00Z', details: { family: 'deepseek-ocr', parameter_size: '3B', quantization_level: 'Q8_0' }, capabilities: ['completion', 'vision'], context_length: 8192 },
+      { name: 'ornith:9b', model: 'ornith:9b', size: 1500000000, digest: 'sha256:aaa', modified_at: '2026-01-01T00:00:00Z', details: { family: 'qwen35', parameter_size: '9B', quantization_level: 'Q4_K_M' }, capabilities: ['completion', 'tools', 'thinking'], context_length: 262144 },
+      { name: 'deepseek-ocr:latest', model: 'deepseek-ocr:latest', size: 1200000000, digest: 'sha256:bbb', modified_at: '2026-01-01T00:00:00Z', details: { family: 'deepseek-ocr', parameter_size: '3B', quantization_level: 'Q8_0' }, capabilities: ['completion', 'vision'], context_length: 8192 },
     ],
     show: opts.show || {
       'ornith:9b': { parameters: 'temperature 0.6\ntop_k 20\ntop_p 0.95', template: '{{ .Prompt }}', details: { family: 'qwen35' }, model_info: { 'general.architecture': 'qwen35', 'general.parameter_count': 9000000000, 'qwen35.context_length': 262144, 'qwen35.block_count': 32, 'qwen35.full_attention_interval': 4, 'qwen35.embedding_length': 4096, 'qwen35.attention.head_count': 16, 'qwen35.attention.head_count_kv': 4, 'qwen35.attention.key_length': 256, 'qwen35.attention.value_length': 256 }, capabilities: ['completion', 'tools', 'thinking'], thinking: { values: ['low', 'medium', 'high'] } },

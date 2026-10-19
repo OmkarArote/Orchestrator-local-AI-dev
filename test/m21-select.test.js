@@ -36,6 +36,9 @@ describe('M9 selectModel', () => {
     const r = selectModel({ taskKind: 'chat_text', installed: [m({ name: 'huge', fit: 'too_large' }), m({ name: 'cursor/gpt-5', strengths: ['general'] }), m({ name: 'ok', weights_gb: 1 })] });
     assert.equal(r.model, 'ok');
     assert.ok(!r.score_table.some((s) => s.model.includes('/')));
+    const none = selectModel({ taskKind: 'chat_text', installed: [m({ name: 'huge', fit: 'too_large' })] });
+    assert.equal(none.model, null);
+    assert.match(none.reason.join(' '), /too large/);
   });
 
   it('defers when a local task holds the GPU and the best choice would swap', () => {

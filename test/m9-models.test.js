@@ -28,8 +28,8 @@ describe('M9 roles, validation, consumers (pull DISABLED, default)', () => {
   before(async () => {
     REG = await startFakeRegistry({ 'qwen2.5-coder:1.5b': 990e6, 'qwen2.5-coder:7b': 4.68e9, 'qwen2.5-coder:32b': 19.85e9, 'deepseek-r1:7b': 4.68e9 });
     S = await startServer({ env: { ORCH_OLLAMA_REGISTRY: REG.url }, fakeOpts: { models: [
-      { name: 'ornith:9b', model: 'ornith:9b', size: 5630000000, digest: 'sha256:aaa', details: { family: 'qwen35' }, capabilities: ['completion', 'tools', 'thinking'], context_length: 262144 },
-      { name: 'deepseek-ocr:latest', model: 'deepseek-ocr:latest', size: 6690000000, digest: 'sha256:bbb', details: { family: 'deepseek-ocr' }, capabilities: ['completion', 'vision'], context_length: 8192 },
+      { name: 'ornith:9b', model: 'ornith:9b', size: 1500000000, digest: 'sha256:aaa', details: { family: 'qwen35' }, capabilities: ['completion', 'tools', 'thinking'], context_length: 262144 },
+      { name: 'deepseek-ocr:latest', model: 'deepseek-ocr:latest', size: 1200000000, digest: 'sha256:bbb', details: { family: 'deepseek-ocr' }, capabilities: ['completion', 'vision'], context_length: 8192 },
       { name: 'embed:1b', model: 'embed:1b', size: 100000000, digest: 'sha256:ccc', details: { family: 'bert' }, capabilities: ['embedding'], context_length: 2048 },
     ], show: {
       'ornith:9b': { parameters: 'temperature 0.6\ntop_k 20', details: { family: 'qwen35' }, model_info: { 'qwen35.context_length': 262144 }, capabilities: ['completion', 'tools', 'thinking'], thinking: { values: ['low', 'medium', 'high'] } },
@@ -155,6 +155,11 @@ describe('M9 roles, validation, consumers (pull DISABLED, default)', () => {
   it('image and video need vision, document needs 8192 context, audio is the whisper preset', async () => {
     assert.equal((await S.post('/models/roles', { role: 'image', model: 'ornith:9b' }, { allowFail: true })).status, 400);
     assert.equal((await S.post('/models/roles', { role: 'image', model: 'deepseek-ocr:latest' })).model, 'deepseek-ocr:latest');
+    S.fake.state.models.push({ name: 'huge:70b', model: 'huge:70b', size: 70e9, digest: 'sha256:huge', details: { family: 'llama' }, capabilities: ['completion', 'vision'], context_length: 8192 });
+    S.fake.state.show['huge:70b'] = { capabilities: ['completion', 'vision'], model_info: { 'llama.context_length': 8192 }, details: { family: 'llama' } };
+    const huge = await S.post('/models/roles', { role: 'image', model: 'huge:70b' }, { allowFail: true });
+    assert.equal(huge.status, 400);
+    assert.match(huge.json.error, /too large/);
     assert.equal((await S.post('/models/roles', { role: 'audio', model: 'ornith:9b' }, { allowFail: true })).status, 400);
     const audio = await S.post('/models/roles', { role: 'audio', model: 'whisper' });
     assert.equal(audio.model, 'whisper');
