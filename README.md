@@ -50,16 +50,31 @@ Defaults: repos may live under `~/work` (more folders can be authorized in the U
 
 ### Safety model
 
-Localhost-only (Host/Origin checks, no auth, so do not expose the port), authorized folders only (symlink-safe), hardened git (no hooks, https/ssh only, no credentials stored), hard timeouts and process-group kills on every subprocess, worktree isolation, human approval for start/merge/escalation, Cursor usage counted (there is no cap; Cursor only ever runs after your click), and no automatic merging. Do not put secrets in task prompts: prompts are stored in the local database, shown in logs and, for Cursor tasks, sent to Cursor.
+Localhost-only (Host/Origin checks, no auth, so do not expose the port), authorized folders only (symlink-safe), hardened git (no hooks, https/ssh only, no credentials stored), hard timeouts and process-group kills on every subprocess, worktree isolation, human approval for merge. When `ORCH_FLOW` is unset, start and escalation also wait for a click, and Cursor runs only after that click. With `ORCH_FLOW=v2`, `orc do` starts the task and a failed local attempt can escalate without a click. Cursor usage is counted (there is no daily cap). Nothing merges automatically. Do not put secrets in task prompts: prompts are stored in the local database, shown in logs and, for Cursor tasks, sent to Cursor.
 
 ### Development
 
 ```bash
-npm test            # 474 tests on the author machine (474 pass, 0 fail, 0 skipped); fresh-clone/CI count is recorded after the pull-request run (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
+npm test            # 493 tests on the author machine (493 pass, 0 fail, 0 skipped); fresh-clone/CI count is recorded after the pull-request run (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
 npm run doctor      # same as ./setup.sh
 ```
 
 Continuing development in another tool (e.g. Cursor)? Start with `docs/HANDOFF-CURSOR.md` (current state, pending milestones, research, guardrails) and the approved plan in `docs/plans/t70-media-and-prompt-plan.md`.
+
+### Agentic flow (`ORCH_FLOW=v2`)
+
+Unset `ORCH_FLOW` stays on v1. v1 logs a warning for a multi-file prompt and keeps the local engine. v2, for engine `auto`, reads the repo, plans, edits one step at a time, runs the check, and repairs. `POST /api/do` creates the task already approved, so there is no start click. The run stops at `review`. `approve-merge` stays human-only.
+
+The local fallback order is `ornith:9b`, then `qwen3.5:9b` when that model is already installed, then Cursor (`ORCH_V2_LOCAL_MODELS`). Nothing is downloaded. After `ORCH_V2_CURSOR_RUNS` Cursor runs in one task (default 3), the task fails with reason `budget`.
+
+`bin/orc.js` is an HTTP client (`package.json` `bin.orc`). It does not open the database. `orc do` waits until the task is `review` or `failed`. `orc review <id>` prints the task plus `GET /api/tasks/:id/lineage`. The lineage tree (plan, steps, attempts, repairs, escalations, each with reason, status, duration, check, and commit) is also on the task page. Until schema v7 it is built from `task_events` only. Schema v7 is not applied on this branch.
+
+```bash
+ORCH_FLOW=v2 ORCH_PORT=4311 ORCH_DB=/tmp/v2.db node server.js
+orc do "edit a.txt" --service api-seva --base feature/city_filter
+orc status <id>
+orc review <id>
+```
 
 Issues and pull requests are welcome. License: MIT.
 
