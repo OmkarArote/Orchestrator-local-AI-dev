@@ -100,11 +100,11 @@ describe('M9 roles, validation, consumers (pull DISABLED, default)', () => {
     assert.ok((await S.get('/models/roles')).roles.every((r) => r.source === 'config'));
   });
 
-  it('without role overrides every consumer behaves exactly as before (same model arg, no settings file, same request bodies)', async () => {
+  it('without role overrides every consumer behaves as before (same model arg, same request bodies); aider only gets think:false for a thinking model', async () => {
     const log = path.join(S.base, 'stub-aider.log');
     await S.runToReview(P.id, { title: 'plain', prompt: 'edit', files: ['a.txt'], engine: 'local' });
     const rec = fs.readFileSync(log, 'utf8').trim().split('\n').map((l) => JSON.parse(l)).pop();
-    assert.equal(rec.model, 'ollama_chat/ornith:9b'); assert.equal(rec.settings, null); assert.ok(!rec.args.includes('--model-settings-file'));
+    assert.equal(rec.model, 'ollama_chat/ornith:9b'); assert.equal(rec.settings, '- name: ollama_chat/ornith:9b\n  extra_params:\n    think: false\n'); // swap-relook fix 6 (ornith has 'thinking')
     await S.post(`/projects/${P.id}/route`, { prompt: 'edit a' });
     const b = lastBody(S, '/v1/chat/completions');
     assert.equal(b.model, 'ornith:9b'); assert.equal(b.temperature, 0); assert.equal(b.max_tokens, 300); assert.equal(b.reasoning_effort, 'none'); assert.equal(b.top_p, undefined);
@@ -116,7 +116,7 @@ describe('M9 roles, validation, consumers (pull DISABLED, default)', () => {
     const t = await S.runToReview(P.id, { title: 'with ctx', prompt: 'edit', files: ['a.txt'], engine: 'local' });
     const rec = fs.readFileSync(log, 'utf8').trim().split('\n').map((l) => JSON.parse(l)).pop();
     assert.equal(rec.model, 'ollama_chat/ornith:9b'); assert.ok(rec.args.includes('--model-settings-file'));
-    assert.equal(rec.settings, '- name: ollama_chat/ornith:9b\n  extra_params:\n    num_ctx: 12288\n    temperature: 0.3\n');
+    assert.equal(rec.settings, '- name: ollama_chat/ornith:9b\n  extra_params:\n    num_ctx: 12288\n    temperature: 0.3\n    think: false\n');
     const ev = (await S.get(`/tasks/${t.id}/events`)).map((e) => e.message).join('\n');
     assert.match(ev, /settings: num_ctx: 12288, temperature: 0\.3/);
     await set('coding', 'deepseek-ocr:latest', { num_ctx: 4096 });

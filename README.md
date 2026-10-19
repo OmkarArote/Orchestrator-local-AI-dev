@@ -387,6 +387,7 @@ The dashboard shows engine + model per task and a clear badge: **local** (green,
 | `ORCH_CURSOR_MODEL` | `auto` | default model for cursor/auto tasks |
 | `ORCH_CURSOR_REVIEW_MODEL` | `auto` | default model for the advisory review |
 | `ORCH_CURSOR_TIMEOUT_MS` / `ORCH_CURSOR_REVIEW_TIMEOUT_MS` | `2100000` / `300000` | hard timeouts (Cursor task run 35 min) |
+| `ORCH_AIDER_THINK` | `0` | `1` = let aider use the model's default thinking; by default aider gets `think: false` (model-settings file) for thinking-capable local models |
 | `ORCH_CURSOR_PREINSTALL` | `1` | install worktree deps before a Cursor task run when a lockfile exists and `node_modules` is missing (`0` = off) |
 | `ORCH_PLAN_MIN_CHARS` / `ORCH_PLAN_MIN_CHARS_TOOL` | `600` / `80` | plan-first: minimum plan length without / with a Cursor createPlan body; shorter plans fail as truncated instead of being stored |
 | `ORCH_ESCALATION_REQUIRE_APPROVAL` | `1` | `0` = auto-approve escalations (not recommended) |

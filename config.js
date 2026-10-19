@@ -51,6 +51,7 @@ module.exports = {
   ALLOW_MODEL_PULL: env.ORCH_ALLOW_MODEL_PULL === '1',                    // DISABLED by default: no pull/delete endpoint does anything unless this is 1
   MODEL: env.ORCH_MODEL || 'ollama_chat/qwen2.5-coder:7b',
   AIDER_BIN: env.ORCH_AIDER_BIN || path.join(HOME, '.local', 'bin', 'aider'),
+  AIDER_THINK: env.ORCH_AIDER_THINK === '1', // default off: aider gets think:false for thinking-capable local models
   // hard timeouts (ms) for every subprocess
   AIDER_TIMEOUT_MS: num(env.ORCH_AIDER_TIMEOUT_MS, 20 * 60 * 1000),
   INSTALL_TIMEOUT_MS: num(env.ORCH_INSTALL_TIMEOUT_MS, 10 * 60 * 1000),
