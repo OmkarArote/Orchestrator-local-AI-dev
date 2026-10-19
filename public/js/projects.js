@@ -23,8 +23,8 @@ async function renderList(main, route) {
       el('div', { className: 'page-head' }, el('div', { className: 'grow' }, el('h1', {}, 'Projects'), el('p', {}, 'A project is a product made of one or more services; each service is a git repository (or a folder inside one). Tasks run against one service.')),
         el('label', { className: 'row small', style: { margin: 0 } }, el('input', { type: 'checkbox', checked: showArchived, onchange: (e) => { showArchived = e.target.checked; draw(); } }), 'show archived'),
         el('button', { className: 'btn primary', textContent: '+ New project', onclick: () => newProjectModal() })),
-      list.length ? el('div', { className: 'grid auto' }, ...list.map((p) => projectCard(p, open)))
-        : empty({ icon: 'folder', title: 'No projects yet', text: 'Create a project, then import a repository from a git URL, create a new one, or register a folder that is already on this Mac.', action: el('button', { className: 'btn primary', textContent: '+ New project', onclick: () => newProjectModal() }) }),
+      list.length ? el('div', { className: 'grid auto' }, ...list.map((p) => projectCard(p, open, async () => { await loadProjects(); draw(); })))
+        : empty({ icon: 'folder', title: all.some((p) => p.archived) && !showArchived ? 'No active projects' : 'No projects yet', text: all.some((p) => p.archived) && !showArchived ? 'Archived projects stay on this page when "show archived" is on. Turn that on to restore one.' : 'Create a project, then import a repository from a git URL, create a new one, or register a folder that is already on this Mac.', action: el('button', { className: 'btn primary', textContent: '+ New project', onclick: () => newProjectModal() }) }),
       el('div', { className: 'mt', id: 'usage-slot' }), el('div', { className: 'mt', id: 'roots-slot' }));
     rootsCard().then((c) => { const slot = root.querySelector('#roots-slot'); if (slot) slot.append(c); });
     cursorUsageCard().then((c) => { const slot = root.querySelector('#usage-slot'); if (slot) slot.append(c); });
@@ -34,13 +34,18 @@ async function renderList(main, route) {
   draw();
   if (route && route.query && route.query.get('open') === 'new-project') newProjectModal();
 }
-function projectCard(p, open) {
+function archiveControl(p, after) {
+  return el('button', { className: 'btn sm ghost', type: 'button', textContent: p.archived ? 'Unarchive' : 'Archive', title: p.archived ? 'Show this project in the list and in pickers again' : 'Hide this project from the list and from pickers. Repositories stay on disk.', onclick: (e) => { e.stopPropagation(); busy(e.currentTarget, async () => { await api(`/projects/${p.id}/${p.archived ? 'unarchive' : 'archive'}`, {}); toast(p.archived ? 'project restored' : 'project archived', 'ok'); await after(); }); } });
+}
+function projectCard(p, open, after) {
   const tasks = S.tasks.filter((t) => t.project_id === p.id), active = tasks.filter((t) => ['pending', 'approved', 'running', 'checking', 'awaiting_escalation', 'awaiting_plan'].includes(t.status)).length, review = tasks.filter((t) => t.status === 'review').length;
-  const c = el('div', { className: 'card hover', tabIndex: 0, role: 'link', 'aria-label': `open project ${p.name}`, onclick: () => open(p), onkeydown: (e) => { if (e.key === 'Enter') open(p); } },
-    el('div', { className: 'head' }, el('h3', {}, p.name), p.archived ? badge('archived', 's-rejected') : null),
-    el('div', { className: 'small dim', style: { minHeight: '34px' } }, p.description || 'No description.'),
-    el('div', { className: 'row mt', id: `pc-svc-${p.id}` }, el('span', { className: 'skel', style: { width: '120px', height: '18px' } })),
-    el('div', { className: 'row mt' }, active ? badge(`${active} active`, 's-running') : null, review ? badge(`${review} to review`, 's-review') : null, !active && !review ? el('span', { className: 'small dim' }, `${tasks.length} task(s)`) : null));
+  const c = el('div', { className: 'card hover' + (p.archived ? ' flat' : ''), style: p.archived ? { opacity: 0.75 } : null },
+    el('div', { tabIndex: 0, role: 'link', 'aria-label': `open project ${p.name}`, onclick: () => open(p), onkeydown: (e) => { if (e.key === 'Enter') open(p); } },
+      el('div', { className: 'head' }, el('h3', {}, p.name), p.archived ? badge('archived', 's-rejected') : null),
+      el('div', { className: 'small dim', style: { minHeight: '34px' } }, p.description || 'No description.'),
+      el('div', { className: 'row mt', id: `pc-svc-${p.id}` }, el('span', { className: 'skel', style: { width: '120px', height: '18px' } })),
+      el('div', { className: 'row mt' }, active ? badge(`${active} active`, 's-running') : null, review ? badge(`${review} to review`, 's-review') : null, !active && !review ? el('span', { className: 'small dim' }, `${tasks.length} task(s)`) : null)),
+    el('div', { className: 'row mt' }, el('span', { style: { flex: 1 } }), archiveControl(p, after)));
   loadServices(p.id, false).then((svcs) => { const box = c.querySelector(`#pc-svc-${p.id}`); if (!box) return; const act = svcs.filter((s) => !s.archived); clear(box, chip(`${act.length} service${act.length === 1 ? '' : 's'}`), ...act.slice(0, 4).map((s) => chip(s.name, 'mono')), act.length > 4 ? chip(`+${act.length - 4}`) : null); });
   return c;
 }
@@ -61,6 +66,7 @@ async function renderDetail(main, route) {
     clear(head,
       el('div', { className: 'crumbs small' }, el('a', { href: '#/projects', textContent: '\u2190 Projects' })),
       el('div', { className: 'page-head' }, el('div', { className: 'grow' }, el('h1', {}, p.name, p.archived ? ' ' : '', p.archived ? badge('archived', 's-rejected') : null), el('p', {}, p.description || 'No description yet \u2013 add one in Settings so routing and the context bundle know what this product is.')),
+        archiveControl(p, () => ctx.refreshProject()),
         el('button', { className: 'btn', textContent: '+ New task', disabled: p.archived, onclick: () => newTaskModal(p.id) }),
         el('button', { className: 'btn primary', textContent: '+ Add service', disabled: p.archived, onclick: () => addServiceModal(p, { onDone: () => ctx.redraw() }) })),
       el('div', { className: 'tabs', role: 'tablist' }, ...TABS.map(([k, l]) => el('button', { role: 'tab', 'aria-selected': k === tab, className: k === tab ? 'on' : '', textContent: l === 'Memory' ? `Memory${S.memProps.filter((m) => m.project_id === p.id && m.status === 'pending').length ? ' \u25CF' : ''}` : l, onclick: () => ctx.goTab(k) }))));
