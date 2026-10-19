@@ -55,7 +55,7 @@ Localhost-only (Host/Origin checks, no auth, so do not expose the port), authori
 ### Development
 
 ```bash
-npm test            # 446 tests on the author machine (446 pass, 0 fail, 0 skipped; same with CI=1); fresh-clone/CI count is recorded after the pull-request run (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
+npm test            # 462 tests on the author machine (462 pass, 0 fail, 0 skipped; same with CI=1); fresh-clone/CI count is recorded after the pull-request run (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
 npm run doctor      # same as ./setup.sh
 ```
 
@@ -191,16 +191,17 @@ Models page / `lib/models.js` / `lib/ollama.js` (the only Ollama client). **No m
 * **Roles**: `coding planning requirements review debugging documentation routing memory chat image video audio document` (an `embedding` role is allowed by the DB schema but not listed until something uses it). `GET/POST /api/models/roles`, `POST /api/models/roles/validate|clear`, `GET/POST /api/models/default`.
   A role = model + options (`num_ctx`, `temperature`, `top_p`, `top_k`, `num_predict`, `think`, ...). Settings are **validated against `/api/tags` + `/api/show`**
   (installed, context window not exceeded, tools/thinking capability, `num_ctx` above the model's context needs `allow_large_ctx`). Precedence: role row > default-model setting > env (`ORCH_MODEL`...).
-  Wired today: `coding` (aider: `--model-settings-file` with `extra_params`, written only when options are configured), `routing`, `memory`, `chat` (dashboard Chat), `image` and `video` (need `vision`; without one, chat keeps tesseract text and says so), `document` (needs `completion` and a context window of at least 8192), `audio` (the `whisper` tool preset, not an Ollama model). `too_large` is refused for the media roles; `tight` is a warning. Vision images are attached only inside `lib/ollama.js`.
+  Wired today: `coding` (aider: `--model-settings-file` with `extra_params`; `num_ctx` 16384 and `num_predict` from `ORCH_LOCAL_NUM_PREDICT` are filled in when the role does not set them), `routing`, `memory`, `chat` (dashboard Chat), `image` and `video` (need `vision`; without one, chat keeps tesseract text and says so), `document` (needs `completion` and a context window of at least 8192), `audio` (the `whisper` tool preset, not an Ollama model). `too_large` is refused for the media roles; `tight` is a warning. Vision images are attached only inside `lib/ollama.js`.
 * **Pull / delete** (`POST /api/ollama/models/pull|delete`) exist but answer **403 `disabled`** unless `ORCH_ALLOW_MODEL_PULL=1`. Even then they need a disk check
   (free >= 1.25 x size + 5 GB) and an explicit request. The UI's Download buttons are disabled ("downloads disabled - enable later").
 * Verified with the installed `<your-model>`: aider auto-sizes its context (about 9k for a tiny prompt), so a role `num_ctx` acts as an override/cap. The `/v1` router endpoint cannot set `num_ctx` (only the Ollama API mode can).
+* A local run writes live `tokens:` events (shown in the task log bar): an estimate before the model replies, then aider's own `Tokens: N sent, M received` against the coding `num_ctx`, then the projected next request as aider names files. The run stops when that next request would pass `ORCH_LOCAL_MAX_REQUEST_CHARS` or `num_ctx`. The stop line names the files that still fit; pin those on a shorter task. Raising the cap does not make a 9B window hold a second turn full of source.
 
 ## Chat with the local model
 
 Chat page: conversations (SQLite, schema v5 tables `chat_conversations` / `chat_messages`) answered by the local Ollama model. **No tools, no file or repository access**: the model only sees the conversation.
 `lib/chat.js` (logic), `lib/chat-api.js` (HTTP), streaming adapter `ollama.chatStream` in `lib/ollama.js` (native `/api/chat`, NDJSON).
-* Defaults: model = the `chat` role if set, else the `coding` role's model; **`num_ctx` 16384** (`ORCH_CHAT_NUM_CTX`, or the `chat` role's `num_ctx`) and **`think: false`** are always sent explicitly
+* Defaults: model = the `chat` role if set, else the `coding` role's model; **`num_ctx` 16384** (`ORCH_CHAT_NUM_CTX`, or the `chat` role's `num_ctx`), **`think: false`**, and **`keep_alive`** (`ORCH_OLLAMA_KEEP_ALIVE`, default `30m`) are always sent explicitly on native `/api/chat`
   (thinking models like `ornith:9b` otherwise default to thinking, and Ollama defaults the window to 4096). Per conversation you can override model, `num_ctx`, sampling options and `think` (validated like a role).
 * `POST /api/conversations/:id/messages {content, think?, attachments?, pin_attachments?}` answers **`text/event-stream`** (read with `fetch`, not `EventSource`): `meta` (model, num_ctx, token budget, context manifest, warnings), `token {text}*`,
   `thinking {text}*`, then `done {status, prompt_tokens, completion_tokens, ms, warn[]}` or `error {code, message}`. Validation problems (400/404/409) are plain JSON before any stream starts.
@@ -387,11 +388,15 @@ The dashboard shows engine + model per task and a clear badge: **local** (green,
 | `ORCH_CURSOR_MODEL` | `auto` | default model for cursor/auto tasks |
 | `ORCH_CURSOR_REVIEW_MODEL` | `auto` | default model for the advisory review |
 | `ORCH_CURSOR_TIMEOUT_MS` / `ORCH_CURSOR_REVIEW_TIMEOUT_MS` | `2100000` / `300000` | hard timeouts (Cursor task run 35 min) |
-| `ORCH_LOCAL_MAX_REQUEST_CHARS` | `60000` | local (aider) request budget: message + context + pinned files + repo map; checked before the run and while aider auto-adds files named in the message (run stopped when exceeded) |
+| `ORCH_LOCAL_MAX_REQUEST_CHARS` | `60000` | local (aider) request budget: message + context + pinned files + repo map; checked before the run and while aider auto-adds files named in the message. Also stops when the projected next request (aider's last sent + received, plus the new files) would pass the coding `num_ctx`. Live `tokens:` events show the count; the stop line lists files that still fit |
 | `ORCH_LOCAL_MAX_FILE_BYTES` | `65536` | tracked files above this size go into the generated aider ignore file (unless pinned) |
 | `ORCH_LOCAL_MAX_FILES` | `5` | more pinned files = multi-file task: refused by the local engine (engine `auto` then asks for the Cursor escalation) |
 | `ORCH_LOCAL_MAP_TOKENS` / `ORCH_LOCAL_MAP_TOKENS_WITH_FILES` | `2048` / `1024` | aider repo-map size without / with pinned files (was `0` = no map) |
 | `ORCH_AIDER_THINK` | `0` | `1` = let aider use the model's default thinking; by default aider gets `think: false` (model-settings file) for thinking-capable local models |
+| `ORCH_AIDER_EDIT_FORMAT` | unset (`diff`) | `whole`, `diff`, `udiff`, or `diff-fenced`. Unset or `diff` uses `whole` when a pinned file is missing or under 4096 bytes. Any other value refuses the local run |
+| `ORCH_LOCAL_NUM_PREDICT` | `4096` | `num_predict` sent to aider when the coding role does not set one (integer 1..131072, or -1) |
+| `ORCH_OLLAMA_KEEP_ALIVE` | `30m` | top-level `keep_alive` on native `/api/chat` (router/memory when `ORCH_ROUTER_API=ollama`, and dashboard chat). Not sent on `/v1`. Aider does not get this field; set the Ollama server variable `OLLAMA_KEEP_ALIVE` if aider runs should keep the model loaded |
+| `ORCH_PROTECTED_BRANCHES` | `main,uat,UAT` | comma-separated. A task whose `base_ref` is one of these is refused before `worktree add`. The service default branch is still allowed (v1 tasks cut from `main`) |
 | `ORCH_CURSOR_PREINSTALL` | `1` | install worktree deps before a Cursor task run when a lockfile exists and `node_modules` is missing (`0` = off) |
 | `ORCH_PLAN_MIN_CHARS` / `ORCH_PLAN_MIN_CHARS_TOOL` | `600` / `80` | plan-first: minimum plan length without / with a Cursor createPlan body; shorter plans fail as truncated instead of being stored |
 | `ORCH_ESCALATION_REQUIRE_APPROVAL` | `1` | `0` = auto-approve escalations (not recommended) |
@@ -625,7 +630,7 @@ Use `ORCH_CURSOR_BIN=<stub>`, `ORCH_OPEN_DRY_RUN=1`, `ORCH_OSASCRIPT_BIN=<stub>`
 - No automatic retry; a failed task must be re-created as a new task.
 - **Worktree and branch are kept on reject-merge, rejection and failure** (for inspection); only a successful merge removes the worktree. No cleanup endpoint - remove manually: `git worktree remove --force <path>` and `git branch -D ai/task-<id>` in the project repo. Branches are never deleted, even after merge.
 - Local tasks run one at a time across all projects; up to `ORCH_MAX_PARALLEL_CURSOR` Cursor tasks run in parallel (see Sequences); no queue priorities.
-- The 9B local model can ignore the prompt or return a file unchanged; aider uses edit format `whole`, so keep `files` small and prompts precise.
+- The 9B local model can ignore the prompt or return a file unchanged. The local engine defaults to edit format `diff` (`ORCH_AIDER_EDIT_FORMAT`); a pinned file under 4 KB, or a pinned file that does not exist yet, falls back to `whole`.
 - A task only passes if the check command exits 0; the default `npm run build` proves it compiles, not that behaviour is correct. Review the diff.
 - A merge conflict aborts the merge and leaves the task in `review`; resolving it is manual. Merges are refused while the project's working copy is dirty.
 - Worktrees are cut from the committed default branch - uncommitted work in the project checkout is not seen by tasks.

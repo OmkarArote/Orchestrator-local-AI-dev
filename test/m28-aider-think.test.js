@@ -1,6 +1,7 @@
 'use strict';
 // Swap-relook fix 6: aider gets think:false for thinking-capable local models (litellm sends it as Ollama's top-level `think`), via the
-// model-settings file written for the model aider ACTUALLY runs. Non-thinking models get nothing, ORCH_AIDER_THINK=1 keeps the default.
+// model-settings file written for the model aider ACTUALLY runs. Non-thinking models omit think. ORCH_AIDER_THINK=1 omits think.
+// num_ctx 16384 and num_predict 4096 are always present unless the coding role sets them.
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -17,14 +18,16 @@ describe('M28 aider think:false for thinking models', () => {
   });
   after(async () => { await S.stop(); });
 
-  it('thinking model (ornith:9b): think:false; non-thinking coding model: no settings file at all', async () => {
+  it('thinking model (ornith:9b): think:false plus num_ctx/num_predict defaults; non-thinking model omits think', async () => {
     await S.runToReview(P.id, { title: 'a', prompt: 'edit', files: ['a.txt'], engine: 'local' });
     let rec = lastAider(S);
-    assert.equal(rec.settings, '- name: ollama_chat/ornith:9b\n  extra_params:\n    think: false\n');
+    assert.equal(rec.settings, '- name: ollama_chat/ornith:9b\n  extra_params:\n    num_ctx: 16384\n    num_predict: 4096\n    think: false\n');
     await S.post('/models/roles', { role: 'coding', model: 'deepseek-ocr:latest', options: {} });
     await S.runToReview(P.id, { title: 'b', prompt: 'edit', files: ['a.txt'], engine: 'local' });
     rec = lastAider(S);
-    assert.equal(rec.model, 'ollama_chat/deepseek-ocr:latest'); assert.equal(rec.settings, null); assert.ok(!rec.args.includes('--model-settings-file'));
+    assert.equal(rec.model, 'ollama_chat/deepseek-ocr:latest');
+    assert.equal(rec.settings, '- name: ollama_chat/deepseek-ocr:latest\n  extra_params:\n    num_ctx: 16384\n    num_predict: 4096\n');
+    assert.ok(rec.args.includes('--model-settings-file'));
     await S.post('/models/roles/clear', { role: 'coding' });
   });
 
@@ -32,16 +35,16 @@ describe('M28 aider think:false for thinking models', () => {
     const r = await S.post('/models/roles', { role: 'coding', model: 'ornith:9b', options: { think: 'low' } });
     assert.ok((r.warnings || []).some((w) => /passed to aider/.test(w)));
     await S.runToReview(P.id, { title: 'c', prompt: 'edit', files: ['a.txt'], engine: 'local' });
-    assert.equal(lastAider(S).settings, '- name: ollama_chat/ornith:9b\n  extra_params:\n    think: "low"\n');
+    assert.equal(lastAider(S).settings, '- name: ollama_chat/ornith:9b\n  extra_params:\n    num_ctx: 16384\n    num_predict: 4096\n    think: "low"\n');
     await S.post('/models/roles/clear', { role: 'coding' });
   });
 
-  it('ORCH_AIDER_THINK=1 sends nothing (model default)', async () => {
+  it('ORCH_AIDER_THINK=1 omits think and still sends num_ctx and num_predict defaults', async () => {
     const S2 = await startServer({ env: { ORCH_AIDER_THINK: '1' } });
     try {
       const P2 = await S2.addProject(makeRepo(path.join(S2.work, 'th2'), { 'a.txt': 'a\n' }), 'th2', 'true');
       await S2.runToReview(P2.id, { title: 'a', prompt: 'edit', files: ['a.txt'], engine: 'local' });
-      assert.equal(lastAider(S2).settings, null);
+      assert.equal(lastAider(S2).settings, '- name: ollama_chat/ornith:9b\n  extra_params:\n    num_ctx: 16384\n    num_predict: 4096\n');
     } finally { await S2.stop(); }
   });
 });

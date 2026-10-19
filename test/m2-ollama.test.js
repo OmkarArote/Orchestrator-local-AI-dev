@@ -129,7 +129,7 @@ describe('M2 llm.js delegates to the adapter with IDENTICAL request bodies', () 
     assert.equal(r1.path, '/v1/chat/completions');
     assert.deepEqual(r1.body, { model: 'ornith:9b', messages: msgs, temperature: 0, max_tokens: 300, response_format: { type: 'json_object' }, reasoning_effort: 'none' });
     assert.equal(r2.path, '/api/chat');
-    assert.deepEqual(r2.body, { model: 'ornith:9b', messages: msgs, stream: false, think: false, format: { type: 'object' }, options: { temperature: 0, num_ctx: 8192, num_predict: 500 } });
+    assert.deepEqual(r2.body, { model: 'ornith:9b', messages: msgs, stream: false, think: false, format: { type: 'object' }, options: { temperature: 0, num_ctx: 8192, num_predict: 500 }, keep_alive: '30m' });
   });
 });
 

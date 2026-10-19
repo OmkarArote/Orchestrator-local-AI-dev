@@ -132,10 +132,14 @@ export function renderDiff(box, r) {
 function terminal(taskId, { stream }) {
   const body = el('div', { className: 'term-body', role: 'log', 'aria-live': 'off', tabIndex: 0 });
   let follow = true; const follow_cb = el('input', { type: 'checkbox', checked: true, onchange: () => { follow = follow_cb.checked; if (follow) body.scrollTop = body.scrollHeight; } });
-  const status = el('span', {}, 'connecting\u2026'); const lines = [];
-  const add = (r) => { lines.push(`${hhmmss(r.ts)} [${r.kind}] ${r.message}`); const near = body.scrollTop + body.clientHeight >= body.scrollHeight - 50; body.append(el('div', { className: `term-line l-${r.kind}` }, el('span', { className: 'ts' }, hhmmss(r.ts)), el('span', { className: 'k' }, r.kind), el('span', { className: 'm' }, r.message))); if (follow && near) body.scrollTop = body.scrollHeight; };
+  const status = el('span', {}, 'connecting\u2026'); const budget = el('span', { className: 'tok' }); const lines = [];
+  const add = (r) => {
+    lines.push(`${hhmmss(r.ts)} [${r.kind}] ${r.message}`);
+    if (r.kind === 'system' && r.message.startsWith('tokens:')) { budget.textContent = r.message.slice(7).trim(); budget.title = budget.textContent; }
+    const near = body.scrollTop + body.clientHeight >= body.scrollHeight - 50; body.append(el('div', { className: `term-line l-${r.kind}` }, el('span', { className: 'ts' }, hhmmss(r.ts)), el('span', { className: 'k' }, r.kind), el('span', { className: 'm' }, r.message))); if (follow && near) body.scrollTop = body.scrollHeight;
+  };
   const node = el('div', { className: 'term' }, el('div', { className: 'term-bar' }, el('div', { className: 'dots' }, el('i'), el('i'), el('i')), el('span', { className: 'spacer' }, `task #${taskId} \u00B7 live log \u00B7 `, status),
-    el('label', {}, follow_cb, 'follow'), el('button', { className: 'btn sm ghost', style: { color: '#8b95a7' }, textContent: 'copy', onclick: () => copyText(lines.join('\n')) })), body);
+    budget, el('label', {}, follow_cb, 'follow'), el('button', { className: 'btn sm ghost', style: { color: '#8b95a7' }, textContent: 'copy', onclick: () => copyText(lines.join('\n')) })), body);
   let es = null;
   if (!stream) { status.textContent = 'snapshot'; api(`/tasks/${taskId}/events`).then((rows) => rows.forEach(add)); }
   else {

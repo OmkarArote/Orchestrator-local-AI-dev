@@ -27,6 +27,13 @@ function resolveDbPath(e = env, mainFile = require.main && require.main.filename
   throw new Error('refusing to open the real orchestrator DB (data/orchestrator.db) from anything but `node server.js`: set ORCH_DB to a throw-away path (or ORCH_ALLOW_DEFAULT_DB=1 if you really mean it)');
 }
 const num = (v, d) => (Number.isFinite(Number(v)) && v !== undefined && v !== '' ? Number(v) : d);
+/** Integer env, or `d` when unset. `allow` holds extras outside min..max (num_predict uses -1). Throws on a bad value so a typo cannot silently truncate. */
+function boundedInt(name, v, d, min, max, allow = []) {
+  if (v === undefined || v === '') return d;
+  const n = Number(v);
+  if (Number.isInteger(n) && ((n >= min && n <= max) || allow.includes(n))) return n;
+  throw new Error(`${name} must be an integer ${min}..${max}${allow.length ? ` or ${allow.join(' or ')}` : ''}; got ${JSON.stringify(v)}`);
+}
 
 module.exports = {
   HOST: '127.0.0.1', // hard-coded on purpose: never expose externally
@@ -58,6 +65,12 @@ module.exports = {
   LOCAL_MAP_TOKENS: num(env.ORCH_LOCAL_MAP_TOKENS, 2048),                // repo map when no files are pinned
   LOCAL_MAP_TOKENS_WITH_FILES: num(env.ORCH_LOCAL_MAP_TOKENS_WITH_FILES, 1024),
   AIDER_THINK: env.ORCH_AIDER_THINK === '1', // default off: aider gets think:false for thinking-capable local models
+  // unset or '' means diff, then whole for a pinned file under 4 KB or a pinned file that does not exist yet (lib/runner.js)
+  AIDER_EDIT_FORMAT: env.ORCH_AIDER_EDIT_FORMAT ? String(env.ORCH_AIDER_EDIT_FORMAT) : '',
+  LOCAL_NUM_PREDICT: boundedInt('ORCH_LOCAL_NUM_PREDICT', env.ORCH_LOCAL_NUM_PREDICT, 4096, 1, 131072, [-1]),
+  LOCAL_NUM_CTX: 16384, // coding-role default when the role does not set num_ctx; not an env var (CTX_WARN, under CTX_MAX)
+  OLLAMA_KEEP_ALIVE: env.ORCH_OLLAMA_KEEP_ALIVE ? String(env.ORCH_OLLAMA_KEEP_ALIVE) : '30m', // top-level field on native /api/chat only
+  PROTECTED_BRANCHES: (env.ORCH_PROTECTED_BRANCHES !== undefined ? env.ORCH_PROTECTED_BRANCHES : 'main,uat,UAT').split(',').map((s) => s.trim()).filter(Boolean),
   // hard timeouts (ms) for every subprocess
   AIDER_TIMEOUT_MS: num(env.ORCH_AIDER_TIMEOUT_MS, 20 * 60 * 1000),
   INSTALL_TIMEOUT_MS: num(env.ORCH_INSTALL_TIMEOUT_MS, 10 * 60 * 1000),

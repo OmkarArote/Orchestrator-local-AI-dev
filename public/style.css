@@ -92,6 +92,7 @@ table { border-collapse: collapse; width: 100%; } th, td { text-align: left; pad
 .term { background: var(--term-bg); color: var(--term-fg); border-radius: 10px; border: 1px solid #222a35; overflow: hidden; box-shadow: var(--shadow); }
 .term-bar { display: flex; align-items: center; gap: 10px; padding: 7px 12px; background: #131922; border-bottom: 1px solid #222a35; color: #8b95a7; font-size: 12px; } .term-bar .dots { display: flex; gap: 6px; } .term-bar .dots i { width: 10px; height: 10px; border-radius: 50%; background: #3a4352; }
 .term-bar .dots i:nth-child(1) { background: #ff5f57; } .term-bar .dots i:nth-child(2) { background: #febc2e; } .term-bar .dots i:nth-child(3) { background: #28c840; } .term-bar label { margin: 0; display: flex; gap: 5px; align-items: center; color: #8b95a7; font-weight: 500; }
+.term-bar .tok { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #c5d0de; }
 .term-body { height: 46vh; min-height: 220px; overflow: auto; padding: 10px 0; font: 12.5px/1.5 var(--mono); } .term-body.short { height: 200px; min-height: 120px; }
 .term-line { display: flex; gap: 10px; padding: 0 14px; white-space: pre-wrap; word-break: break-word; } .term-line:hover { background: rgba(255, 255, 255, .04); }
 .term-line .ts { color: #566176; flex: none; user-select: none; } .term-line .k { flex: none; width: 66px; text-align: right; color: #566176; user-select: none; } .term-line .m { min-width: 0; flex: 1; }
