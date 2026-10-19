@@ -62,7 +62,8 @@ module.exports = {
   CURSOR_BIN: env.ORCH_CURSOR_BIN || path.join(HOME, '.local', 'bin', 'agent'),
   CURSOR_MODEL: env.ORCH_CURSOR_MODEL || 'auto',                // default model for engine=cursor|auto
   CURSOR_REVIEW_MODEL: env.ORCH_CURSOR_REVIEW_MODEL || 'auto',  // default model for the advisory AI review
-  CURSOR_TIMEOUT_MS: num(env.ORCH_CURSOR_TIMEOUT_MS, 15 * 60 * 1000),
+  CURSOR_TIMEOUT_MS: num(env.ORCH_CURSOR_TIMEOUT_MS, 35 * 60 * 1000), // multi-file Cursor work (task #7) needed more than the old 15 min
+  CURSOR_PREINSTALL: env.ORCH_CURSOR_PREINSTALL !== '0',               // install deps in the worktree before a Cursor task run when a lockfile exists
   CURSOR_REVIEW_TIMEOUT_MS: num(env.ORCH_CURSOR_REVIEW_TIMEOUT_MS, 5 * 60 * 1000),
   // plan-first: a plan without a createPlan body shorter than this is treated as truncated (not stored); with a createPlan body the floor is lower
   PLAN_MIN_CHARS: num(env.ORCH_PLAN_MIN_CHARS, 600),

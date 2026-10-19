@@ -327,7 +327,7 @@ agent -p --force --trust --sandbox enabled --workspace <worktree> --model <model
 * The prompt = your task prompt + rules (stay in the worktree, minimal change, **do not git commit/push**, the check command that must pass).
   The orchestrator commits afterwards.
 * Per-task `model` (default `ORCH_CURSOR_MODEL`, default `auto`; validated against `agent --list-models` when that list is cached).
-* **Hard timeout** (`ORCH_CURSOR_TIMEOUT_MS`, default 15 min), process-group SIGTERM/SIGKILL, cancel supported.
+* **Hard timeout** (`ORCH_CURSOR_TIMEOUT_MS`, default 35 min), process-group SIGTERM/SIGKILL, cancel supported. Before a task run the worktree's dependencies are installed when a lockfile exists and `node_modules` is missing (service/project `install_cmd`, else `npm ci`; `ORCH_CURSOR_PREINSTALL=0` turns it off), and the prompt states the time budget, targeted-tests-only and that MongoDB/Redis may be absent.
 * **stream-json is parsed into readable `task_events`** (`kind=cursor`: session, thinking, assistant text, tool calls with ok/exit/+lines,
   result with duration and token counts). Partial deltas are merged into one line per segment. The **raw stream is kept** in
   `~/work/local-ai-dev/logs/cursor-task-<id>-task.jsonl` (stderr in `.stderr`); reviews use `...-review.jsonl`.
@@ -386,7 +386,8 @@ The dashboard shows engine + model per task and a clear badge: **local** (green,
 | `ORCH_CURSOR_BIN` | `~/.local/bin/agent` | Cursor CLI |
 | `ORCH_CURSOR_MODEL` | `auto` | default model for cursor/auto tasks |
 | `ORCH_CURSOR_REVIEW_MODEL` | `auto` | default model for the advisory review |
-| `ORCH_CURSOR_TIMEOUT_MS` / `ORCH_CURSOR_REVIEW_TIMEOUT_MS` | `900000` / `300000` | hard timeouts |
+| `ORCH_CURSOR_TIMEOUT_MS` / `ORCH_CURSOR_REVIEW_TIMEOUT_MS` | `2100000` / `300000` | hard timeouts (Cursor task run 35 min) |
+| `ORCH_CURSOR_PREINSTALL` | `1` | install worktree deps before a Cursor task run when a lockfile exists and `node_modules` is missing (`0` = off) |
 | `ORCH_PLAN_MIN_CHARS` / `ORCH_PLAN_MIN_CHARS_TOOL` | `600` / `80` | plan-first: minimum plan length without / with a Cursor createPlan body; shorter plans fail as truncated instead of being stored |
 | `ORCH_ESCALATION_REQUIRE_APPROVAL` | `1` | `0` = auto-approve escalations (not recommended) |
 | `ORCH_CURSOR_STATUS_TTL_MS` / `ORCH_CURSOR_MODELS_TTL_MS` | `60000` / `600000` | cache TTLs |
