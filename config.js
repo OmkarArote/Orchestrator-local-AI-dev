@@ -34,6 +34,22 @@ function boundedInt(name, v, d, min, max, allow = []) {
   if (Number.isInteger(n) && ((n >= min && n <= max) || allow.includes(n))) return n;
   throw new Error(`${name} must be an integer ${min}..${max}${allow.length ? ` or ${allow.join(' or ')}` : ''}; got ${JSON.stringify(v)}`);
 }
+/** `ORCH_EXPECTED_BASE` is a JSON object `{ "service-name": "branch" }`. Empty means no expectations. */
+function expectedBaseMap(raw) {
+  if (raw === undefined || raw === '') return {};
+  let parsed;
+  try { parsed = JSON.parse(String(raw)); }
+  catch { throw new Error(`ORCH_EXPECTED_BASE must be a JSON object of service name to branch; got ${JSON.stringify(raw)}`); }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('ORCH_EXPECTED_BASE must be a JSON object of service name to branch');
+  const out = {};
+  for (const [k, v] of Object.entries(parsed)) {
+    const name = String(k).trim();
+    const branch = typeof v === 'string' ? v.trim() : '';
+    if (!name || !branch || branch.startsWith('-')) throw new Error(`ORCH_EXPECTED_BASE[${JSON.stringify(k)}] must be a branch name`);
+    out[name] = branch;
+  }
+  return out;
+}
 
 module.exports = {
   HOST: '127.0.0.1', // hard-coded on purpose: never expose externally
@@ -71,6 +87,8 @@ module.exports = {
   LOCAL_NUM_CTX: 16384, // coding-role default when the role does not set num_ctx; not an env var (CTX_WARN, under CTX_MAX)
   OLLAMA_KEEP_ALIVE: env.ORCH_OLLAMA_KEEP_ALIVE ? String(env.ORCH_OLLAMA_KEEP_ALIVE) : '30m', // top-level field on native /api/chat only
   PROTECTED_BRANCHES: (env.ORCH_PROTECTED_BRANCHES !== undefined ? env.ORCH_PROTECTED_BRANCHES : 'main,uat,UAT').split(',').map((s) => s.trim()).filter(Boolean),
+  FLOW: env.ORCH_FLOW === 'v2' ? 'v2' : 'v1', // v2 is the agentic flow; unset stays v1
+  EXPECTED_BASE: expectedBaseMap(env.ORCH_EXPECTED_BASE), // { serviceName: branch }; empty object when unset
   // hard timeouts (ms) for every subprocess
   AIDER_TIMEOUT_MS: num(env.ORCH_AIDER_TIMEOUT_MS, 20 * 60 * 1000),
   INSTALL_TIMEOUT_MS: num(env.ORCH_INSTALL_TIMEOUT_MS, 10 * 60 * 1000),
