@@ -21,7 +21,7 @@ Companion documents: [`docs/plans/t70-media-and-prompt-plan.md`](plans/t70-media
 | Tests on this branch | **425 tests, 425 pass, 0 fail, 0 skipped**. Measured once with `CI=1` (`duration_ms` 41463) and once without (`duration_ms` 41229) |
 | **M6 (attachments foundation)** | **merged** in pull request #1 (`13fa03a` on `main`). Schema v6. See section 1a |
 | Tests on `main` before M7 | **399 tests, 399 pass, 0 fail, 0 skipped** on the author machine at the M6 merge. This branch is 425 |
-| CI (GitHub Actions, ubuntu + macos) | M6 pull request #1 was merged. M7-M14 are pull request #2 |
+| CI (GitHub Actions, ubuntu + macos) | M6 pull request #1 was merged. M7-M14 are pull request #2. The macOS job on that merge failed because the runner has about 7 GB RAM: fake models of 5–7 GB were `too_large`, and engine `auto` treated the Cursor model name `auto` as a local model choice, so escalation never started. Do not download a model in CI. Fixture sizes stay small; Cursor `auto` is not the local selector |
 | Fresh clone / CI test counts differ from the author machine because the migration tests that need a private DB backup, and the live-Ollama test, skip there | |
 | Runtime | Node >= 22.5, **zero npm dependencies** (`node:sqlite`, `node:test`, global `fetch`), vanilla ES-module UI, no build step |
 
