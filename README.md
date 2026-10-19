@@ -399,6 +399,12 @@ The dashboard shows engine + model per task and a clear badge: **local** (green,
 | `ORCH_PROTECTED_BRANCHES` | `main,uat,UAT` | comma-separated. A task whose `base_ref` is one of these is refused before `worktree add`. The service default branch is still allowed (v1 tasks cut from `main`) |
 | `ORCH_FLOW` | unset (`v1`) | `v2` selects the agentic flow. A multi-file prompt on engine `auto` is planned with Cursor and then implemented, with no plan-approval click. Unset keeps the local engine and only logs a warning |
 | `ORCH_EXPECTED_BASE` | unset | JSON object of service name to branch, for example `{"api-seva":"feature/city_filter"}`. When the resolved base differs: `v2` refuses with `base_mismatch` before `worktree add`; `v1` logs a warning and continues. An explicit task `base_ref` (the `orc do --base` override) is logged and used |
+| `ORCH_V2_CURSOR_RUNS` | `3` | Cursor runs allowed inside one v2 task. The next escalation after this fails the task with reason `budget`. This is not a daily cap |
+| `ORCH_V2_STEP_ATTEMPTS` | `3` | attempts per plan step in v2 (the first try plus two repairs) |
+| `ORCH_V2_REPLANS` | `2` | how many times v2 may ask the planner again after a step cannot be repaired |
+| `ORCH_V2_MAX_MIN` | `45` | wall-clock budget for one v2 task, in minutes |
+| `ORCH_V2_DIFF_LOCAL` / `ORCH_V2_DIFF_CURSOR` | `150` / `300` | estimated diff size. At or under 300 lines stays local; above `ORCH_V2_DIFF_CURSOR` is reason `diff_size` and escalates |
+| `ORCH_V2_LOCAL_MODELS` | `ornith:9b,qwen3.5:9b` | comma-separated fallback chain. v2 tries the next model in this list that is already installed, then Cursor. Nothing is downloaded |
 | `ORCH_CURSOR_PREINSTALL` | `1` | install worktree deps before a Cursor task run when a lockfile exists and `node_modules` is missing (`0` = off) |
 | `ORCH_PLAN_MIN_CHARS` / `ORCH_PLAN_MIN_CHARS_TOOL` | `600` / `80` | plan-first: minimum plan length without / with a Cursor createPlan body; shorter plans fail as truncated instead of being stored |
 | `ORCH_ESCALATION_REQUIRE_APPROVAL` | `1` | `0` = auto-approve escalations (not recommended) |

@@ -89,6 +89,14 @@ module.exports = {
   PROTECTED_BRANCHES: (env.ORCH_PROTECTED_BRANCHES !== undefined ? env.ORCH_PROTECTED_BRANCHES : 'main,uat,UAT').split(',').map((s) => s.trim()).filter(Boolean),
   FLOW: env.ORCH_FLOW === 'v2' ? 'v2' : 'v1', // v2 is the agentic flow; unset stays v1
   EXPECTED_BASE: expectedBaseMap(env.ORCH_EXPECTED_BASE), // { serviceName: branch }; empty object when unset
+  // v2 escalation budget. Not a daily cap: these count inside one task, then the task fails with reason `budget`.
+  V2_CURSOR_RUNS: boundedInt('ORCH_V2_CURSOR_RUNS', env.ORCH_V2_CURSOR_RUNS, 3, 0, 50),
+  V2_STEP_ATTEMPTS: boundedInt('ORCH_V2_STEP_ATTEMPTS', env.ORCH_V2_STEP_ATTEMPTS, 3, 1, 10),
+  V2_REPLANS: boundedInt('ORCH_V2_REPLANS', env.ORCH_V2_REPLANS, 2, 0, 10),
+  V2_MAX_MIN: boundedInt('ORCH_V2_MAX_MIN', env.ORCH_V2_MAX_MIN, 45, 1, 240),
+  V2_DIFF_LOCAL: boundedInt('ORCH_V2_DIFF_LOCAL', env.ORCH_V2_DIFF_LOCAL, 150, 1, 100000),
+  V2_DIFF_CURSOR: boundedInt('ORCH_V2_DIFF_CURSOR', env.ORCH_V2_DIFF_CURSOR, 300, 1, 100000),
+  V2_LOCAL_MODELS: (env.ORCH_V2_LOCAL_MODELS !== undefined && env.ORCH_V2_LOCAL_MODELS !== '' ? env.ORCH_V2_LOCAL_MODELS : 'ornith:9b,qwen3.5:9b').split(',').map((s) => s.trim()).filter(Boolean),
   // hard timeouts (ms) for every subprocess
   AIDER_TIMEOUT_MS: num(env.ORCH_AIDER_TIMEOUT_MS, 20 * 60 * 1000),
   INSTALL_TIMEOUT_MS: num(env.ORCH_INSTALL_TIMEOUT_MS, 10 * 60 * 1000),
