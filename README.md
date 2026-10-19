@@ -55,7 +55,7 @@ Localhost-only (Host/Origin checks, no auth, so do not expose the port), authori
 ### Development
 
 ```bash
-npm test            # 462 tests on the author machine (462 pass, 0 fail, 0 skipped; same with CI=1); fresh-clone/CI count is recorded after the pull-request run (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
+npm test            # 464 tests on the author machine (464 pass, 0 fail, 0 skipped; same with CI=1); fresh-clone/CI count is recorded after the pull-request run (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
 npm run doctor      # same as ./setup.sh
 ```
 
@@ -630,7 +630,7 @@ Use `ORCH_CURSOR_BIN=<stub>`, `ORCH_OPEN_DRY_RUN=1`, `ORCH_OSASCRIPT_BIN=<stub>`
 - No automatic retry; a failed task must be re-created as a new task.
 - **Worktree and branch are kept on reject-merge, rejection and failure** (for inspection); only a successful merge removes the worktree. No cleanup endpoint - remove manually: `git worktree remove --force <path>` and `git branch -D ai/task-<id>` in the project repo. Branches are never deleted, even after merge.
 - Local tasks run one at a time across all projects; up to `ORCH_MAX_PARALLEL_CURSOR` Cursor tasks run in parallel (see Sequences); no queue priorities.
-- The 9B local model can ignore the prompt or return a file unchanged. The local engine defaults to edit format `diff` (`ORCH_AIDER_EDIT_FORMAT`); a pinned file under 4 KB, or a pinned file that does not exist yet, falls back to `whole`.
+- The 9B local model can ignore the prompt or return a file unchanged. The local engine defaults to edit format `diff` (`ORCH_AIDER_EDIT_FORMAT`); a pinned file under 4 KB, or a pinned file that does not exist yet, falls back to `whole`. Aider scratch (`.aider*`, including `.aider.tags.cache.v4/`) is listed in the worktree exclude and the generated ignore file, and is dropped in `commitIfChanged`. A run whose only changes are those files is not committed.
 - A task only passes if the check command exits 0; the default `npm run build` proves it compiles, not that behaviour is correct. Review the diff.
 - A merge conflict aborts the merge and leaves the task in `review`; resolving it is manual. Merges are refused while the project's working copy is dirty.
 - Worktrees are cut from the committed default branch - uncommitted work in the project checkout is not seen by tasks.

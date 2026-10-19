@@ -14,6 +14,12 @@ if (settingsIdx >= 0) { try { settings = fs.readFileSync(a[settingsIdx + 1], 'ut
 const ig = a.indexOf('--aiderignore');
 fs.appendFileSync(LOG, JSON.stringify({ t: Date.now(), cwd: process.cwd(), model: a[a.indexOf('--model') + 1], files, settings, readFiles: a.filter((x, i) => a[i - 1] === '--read'), args: a.filter((x) => x !== message),
   message, aiderignore: ig >= 0 ? (() => { try { return fs.readFileSync(a[ig + 1], 'utf8'); } catch { return '(unreadable)'; } })() : null }) + '\n');
+if (process.env.STUB_WRITE_AIDER_CACHE === '1') {
+  const dir = path.join(process.cwd(), '.aider.tags.cache.v4');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'cache'), 'tags-new\n');
+  fs.writeFileSync(path.join(process.cwd(), '.aider.chat.history.md'), 'hist\n');
+}
 console.log('stub-aider: starting');
 console.error('stub-aider: stderr line');
 const pr = message.match(/STUB_PRINT<<([^>]*)>>/); // STUB_PRINT<<a.txt|b.txt>> prints those lines like aider's "Add file to the chat?" subjects
