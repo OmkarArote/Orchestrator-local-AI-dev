@@ -282,3 +282,45 @@ git push origin main
 After pushing, confirm the GitHub Actions run is green on **both** ubuntu and macos before declaring a milestone done, then update sections 1-3 of this file and the README test-count line.
 
 Note: the `curl` example for the upload API only works on a checkout that contains M6 (`wip/m6-attachments` or later).
+
+---------------------------------------------------------------------------------------------------
+## 6. Swap-relook fixes (19 Oct 2026)
+
+Context: a real project ("swap-relook", an Express/Mongo API service) ran one feature task ten times. The diagnosis found: a check command that never terminates (`npm run dev`), the Cursor plan stored as a 353-char preamble instead of the 4357-char plan, aider adding every file named in a "do not open" list (a 1 MB+ request), no repo map, a 15 min Cursor timeout without dependencies installed, thinking left on for a 9B local model, and long hand-written docs filling the bundle.
+
+### Done (on `main`; full suite 446/446 with `CI=1` and without, author machine)
+| Fix | Commit | What | Tests |
+|---|---|---|---|
+| 1 | `c845b34` | `lib/check-guard.js`: a check that is a long-running server (`dev`/`start`/`serve`/`watch` scripts, `nodemon`, `--watch`, ...; npm/yarn/pnpm scripts expanded from package.json) is rejected on save (400) and refused at run time; `timeout N <cmd>` is allowed | `m26-check-and-plan` |
+| 2 | `c845b34` | the full plan (`createPlan` tool args, else the full streamed text) is stored in `<log dir>/cursor-task-N-plan.md`; tiny/truncated plans fail clearly (`ORCH_PLAN_MIN_CHARS`) | `m26-check-and-plan` |
+| 5 | `454cf26` | Cursor timeout 35 min (`ORCH_CURSOR_TIMEOUT_MS`), dependency preinstall when a lockfile exists and `node_modules` is missing (`ORCH_CURSOR_PREINSTALL`), prompt: targeted tests only, MongoDB/Redis may be absent | `m27-cursor-runtime` |
+| 6 | `1badc7e` | aider model settings get `think: false` for models whose `/api/show` lists `thinking` (litellm sends it as top-level `"think": false`); a coding-role `think` option wins; `ORCH_AIDER_THINK=1` keeps the model default; chat toggle untouched | `m28-aider-think`, `m9-models` |
+| 3+4 | `ed19123` | `lib/aider-prep.js`: "do not open ...:" lists leave the aider message and go into a generated `--aiderignore` (plus defaults: lockfiles, README, `*.map`, dist/build/coverage, `.env*`, files > `ORCH_LOCAL_MAX_FILE_BYTES`); pinned files re-allowed; request budget `ORCH_LOCAL_MAX_REQUEST_CHARS` (refuse before, stop while aider auto-adds mentions); `--map-tokens` 2048 / 1024 with pinned files; > `ORCH_LOCAL_MAX_FILES` pinned files refused locally (auto engine -> gated escalation) | `m29-aider-request` |
+| 9 | `6b65095` | optional `BRIEF.md` replaces RULES + ARCHITECTURE in the bundle; `services/<name>.brief.md` replaces the service notes; originals untouched; empty brief = old behaviour | `m30-context-brief` |
+
+Operational notes (outside this repository): the affected service's check was changed through the service-settings API to a syntax-only check (old value recorded for rollback); a one-line quoting bug in that service was fixed on a separate, unpushed branch; brief drafts were written next to the service docs and still have to be imported via the context editor (`POST /api/projects/<id>/context/save`, files `BRIEF.md` and `services/<name>.brief.md`). The running server must be restarted to pick up these commits.
+
+Known limits: the mention-budget watcher counts any aider output line that equals a tracked path (also the file-name line of a "whole" edit), so a very large edited file can trip it; the runtime check guard does not inspect shell scripts called by the check.
+
+### Pending (plan only, needs approval before code; plan-first rule applies)
+* **7. Loop / no-progress breaker + identical re-run block.** Fingerprint (service, normalized prompt, sorted files, engine, model, check, base sha) and failure signature per task; `rerun`/`create` return 409 after `ORCH_RERUN_MAX_IDENTICAL` (2) identical failures unless `force:true` + reason (logged); runner stops on repeated identical failure / no diff. Schema: additive `tasks.fingerprint`, `tasks.failure_sig`, `tasks.rerun_of` (+ `parent_id` for 8), index `(service_id, fingerprint)`, one `user_version` bump with a migration test.
+* **8. Multi-file routing / splitting.** Router breadth estimate (pinned + existing paths named in the prompt + plan file list); breadth > 3 or estimated request over budget -> recommend Cursor (still start-approval gated). Plan-first tasks: feed the plan's file list to aider, optional split into child tasks of <= 3 files (needs `tasks.parent_id`).
+* **10. Clean up the nine duplicate task branches/worktrees** of that run (all at the base commit, no own commits; one task branch under review is kept). Exact commands are in the maintainer's local plan; prefer adding an orchestrator "discard task" action (worktree remove + branch delete through `git()`, recorded as an event).
+* **Review of the task branch (commit `add4b50`, in the service repository, not this one)** is done read-only; findings were reported to the maintainer (text-index rebuild at startup, unknown genres silently accepted as Other, edit clearing a custom label, migration script never run against data, catalogue filter 400 for custom genres). Any follow-up there is the maintainer's call.
+* Optional: let `lib/cursor-rules.js` use `BRIEF.md` for the always-applied rule when present (today it still uses RULES.md, cut to 2400 chars).
+
+### Ready-to-paste Cursor prompt for the remainder
+```text
+Read .cursor/rules/*.mdc and docs/HANDOFF-CURSOR.md section 6 first. Implement swap-relook fix 7 and then fix 8 on main, plan first:
+1. Write docs/plans/swap-relook-7-8.md with the schema change (additive tasks.fingerprint, tasks.failure_sig, tasks.rerun_of,
+   tasks.parent_id, index (service_id, fingerprint), one user_version bump + back-fill) and STOP for approval before any code.
+2. After approval: fix 7 = fingerprint + failure signature, 409 on rerun/create after ORCH_RERUN_MAX_IDENTICAL (default 2)
+   identical failed/rejected tasks unless force:true with a reason (logged as an event), runner no-progress stop. Tests:
+   test/m31-rerun-guard.test.js + a migration test on a temp DB (never data/orchestrator.db).
+3. Fix 8 = router breadth estimate -> recommend cursor (never auto-start; start approval unchanged); plan-first tasks pass the
+   plan's file list to aider; optional split into child tasks (<= 3 files each). Tests: test/m32-breadth-routing.test.js.
+Rules: zero npm deps; git only via git() from lib/proc.js; Ollama strings only in lib/ollama.js; tests use startServer() and temp dirs;
+document every new ORCH_* env var in README; update the README test count to the real total; run `CI=1 npm test` and `npm test`
+and report the real numbers; noreply commit identity via GIT_AUTHOR_*/GIT_COMMITTER_* env vars (never git config); git push origin main
+(no force); confirm CI green on ubuntu and macos; then update this section.
+```
