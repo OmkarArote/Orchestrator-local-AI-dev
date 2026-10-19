@@ -3,6 +3,7 @@ import { el, clear, api, badge, chip, statusBadge, empty, skeletonLines, field, 
 import { icon } from './icons.js';
 import { uploadFile } from './attachments.js';
 import { S, loadTasks, loadMem, loadServices, loadProjects, project, projName, activeServices, ACTIVE_STATUSES, setProjectFilter } from './state.js';
+import { lineageCard } from './lineage.js';
 
 const isCloud = (t) => t.engine !== 'local';
 const FILTERS = [['all', 'All'], ['active', 'Active'], ['review', 'Review'], ['done', 'Done'], ['failed', 'Failed']];
@@ -212,6 +213,7 @@ async function renderDetail(pane, id, { stream, tab: startTab }) {
       el('dl', { className: 'kv small' }, el('dt', {}, 'Service'), el('dd', {}, t.service_name ? t.service_name + (svcPath && svcPath !== '.' ? ` (${svcPath})` : '') : '-'), el('dt', {}, 'Branch'), el('dd', {}, t.branch ? el('code', {}, t.branch) : '-'),
         el('dt', {}, 'Files'), el('dd', {}, t.files.join(', ') || '-'), el('dt', {}, 'Check'), el('dd', {}, t.check_cmd || `${t.service_name ? 'service/' : ''}project default (${p ? p.check_cmd : '?'})`), t.head_sha ? [el('dt', {}, 'Head'), el('dd', {}, el('code', {}, t.head_sha.slice(0, 10)))] : null),
       el('pre', { className: 'plain' }, t.prompt),
+      lineageCard(t.id),
       attInfo && attInfo.attachments && attInfo.attachments.length ? el('div', { className: 'small' }, `sent to Cursor: ${attInfo.sent_to_cursor ? 'yes' : 'no'}`) : null,
     ];
     if (t.context) kids.push(el('div', { className: 'small dim' }, `context bundle given to the engine: ${t.context.total_chars}/${t.context.max_chars} chars (${t.context.parts.map((x) => x.name + (x.truncated ? '*' : '')).join(', ')}); file: ${shortPath(t.context.file)}`));

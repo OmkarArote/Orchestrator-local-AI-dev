@@ -184,4 +184,9 @@ pre.plain { background: var(--surface-2); border: 1px solid var(--line); border-
 .feat-arrow { text-align: center; color: var(--dim); } .feat-arrow > div:first-child { font-size: 28px; line-height: 1; }
 .feat-node.provider { border-left: 3px solid var(--ok, #2da44e); } .feat-node.consumer { border-left: 3px solid var(--accent, #6b8afd); }
 .feat-pre { max-height: 260px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.lineage { margin-top: 8px; }
+.lineage summary { cursor: pointer; }
+.ln-kids { margin-left: 14px; border-left: 1px solid var(--line); padding-left: 8px; }
+.ln-leaf summary { list-style: none; }
+.ln-ok { color: var(--ok); } .ln-bad { color: var(--bad); } .ln-warn { color: var(--warn); } .ln-cloud { color: var(--cloud); } .ln-dim { color: var(--dim); }
 @media (max-width: 760px) { .feat-graph { grid-template-columns: 1fr; } .feat-arrow > div:first-child { transform: rotate(90deg); } }

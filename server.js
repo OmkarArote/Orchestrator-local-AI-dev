@@ -691,6 +691,7 @@ async function api(req, res, url) {
     if (action === 'events') return sendJson(res, 200, store.eventsAfter(id, Number(url.searchParams.get('after')) || 0, 5000));
     if (action === 'stream') return stream(req, res, task);
     if (action === 'diff') return sendJson(res, 200, await taskDiff(task));
+    if (action === 'lineage') return sendJson(res, 200, require('./lib/flow/lineage').buildLineage({ task, events: store.eventsAfter(id, 0, 5000) }));
     return fail(res, 404, 'unknown action');
   }
   if (req.method !== 'POST' || !action) return fail(res, 405, 'method not allowed');
