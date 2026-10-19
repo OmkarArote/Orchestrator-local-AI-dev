@@ -4,6 +4,7 @@
   "private": true,
   "description": "Local-first task orchestrator: approve -> aider in git worktree -> check -> review -> approve merge",
   "main": "server.js",
+  "bin": { "orc": "bin/orc.js" },
   "scripts": {
     "start": "node server.js",
     "test": "node --test --test-concurrency=4 \"test/**/*.test.js\"",

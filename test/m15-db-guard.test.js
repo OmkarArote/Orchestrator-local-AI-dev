@@ -62,5 +62,7 @@ describe('M15 default-DB guard', () => {
     // tests may open DBs only on their own temp paths: every test that spawns code against lib/db sets ORCH_DB explicitly
     const tests = fs.readdirSync(path.join(ROOT, 'test')).filter((f) => f.endsWith('.test.js')).map((f) => [f, fs.readFileSync(path.join(ROOT, 'test', f), 'utf8')]);
     for (const [f, src] of tests) if (/require\('\.\/lib\/db'\)|require\('\.\.\/lib\/db'\)|lib\/(db|context|repo|projects|chat)['"]\)/.test(src) && f !== 'm15-db-guard.test.js') assert.ok(/ORCH_DB|temp-env/.test(src), `${f} touches lib/db but never sets ORCH_DB`);
+    const orc = fs.readFileSync(path.join(ROOT, 'bin/orc.js'), 'utf8');
+    assert.doesNotMatch(orc, /lib\/db|DatabaseSync|orchestrator\.db/);
   });
 });
