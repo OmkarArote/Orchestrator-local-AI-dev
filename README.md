@@ -535,6 +535,7 @@ See *Projects, services and authorized folders* above. (Stage 4 originally only 
 
 ### Project context files
 Per project: `RULES.md`, `SERVICES.md`, `MEMORY.md` and optional `services/<name>.md`. The **managed copy** lives in `data/context/<project>/` (override: `ORCH_CONTEXT_DIR`) and is what runs use.
+Optional **briefs**: a non-empty `BRIEF.md` (aim for ~3K chars) replaces `RULES.md` + `ARCHITECTURE.md` in the engine bundle, and `services/<name>.brief.md` replaces `services/<name>.md`; the originals stay in place (and in the Cursor rule files) and are used again when the brief is emptied.
 Edit in **Project panel -> context** (save, "draft SERVICES.md from services", preview of the bundle). Repo sync:
 - **Export to repo**: creates branch `ai/context-update-<timestamp>` from the default branch in a temporary worktree, commits `.ai/*.md`, removes the worktree, and creates a task already in `review` so the normal **Approve & merge** flow applies. Nothing is ever written to the default branch directly.
 - **Import from repo**: copies `.ai/*` from the default branch into the managed copy (overwrites the managed text; use it deliberately). Each file shows `repo_state` (e.g. `same`, `n/a`).
