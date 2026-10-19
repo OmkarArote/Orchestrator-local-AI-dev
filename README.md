@@ -55,7 +55,7 @@ Localhost-only (Host/Origin checks, no auth, so do not expose the port), authori
 ### Development
 
 ```bash
-npm test            # 469 tests on the author machine (469 pass, 0 fail, 0 skipped); fresh-clone/CI count is recorded after the pull-request run (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
+npm test            # 474 tests on the author machine (474 pass, 0 fail, 0 skipped); fresh-clone/CI count is recorded after the pull-request run (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
 npm run doctor      # same as ./setup.sh
 ```
 
@@ -397,7 +397,7 @@ The dashboard shows engine + model per task and a clear badge: **local** (green,
 | `ORCH_LOCAL_NUM_PREDICT` | `4096` | `num_predict` sent to aider when the coding role does not set one (integer 1..131072, or -1) |
 | `ORCH_OLLAMA_KEEP_ALIVE` | `30m` | top-level `keep_alive` on native `/api/chat` (router/memory when `ORCH_ROUTER_API=ollama`, and dashboard chat). Not sent on `/v1`. Aider does not get this field; set the Ollama server variable `OLLAMA_KEEP_ALIVE` if aider runs should keep the model loaded |
 | `ORCH_PROTECTED_BRANCHES` | `main,uat,UAT` | comma-separated. A task whose `base_ref` is one of these is refused before `worktree add`. The service default branch is still allowed (v1 tasks cut from `main`) |
-| `ORCH_FLOW` | unset (`v1`) | `v2` selects the agentic flow. Unset keeps today's flow |
+| `ORCH_FLOW` | unset (`v1`) | `v2` selects the agentic flow. A multi-file prompt on engine `auto` is planned with Cursor and then implemented, with no plan-approval click. Unset keeps the local engine and only logs a warning |
 | `ORCH_EXPECTED_BASE` | unset | JSON object of service name to branch, for example `{"api-seva":"feature/city_filter"}`. When the resolved base differs: `v2` refuses with `base_mismatch` before `worktree add`; `v1` logs a warning and continues. An explicit task `base_ref` (the `orc do --base` override) is logged and used |
 | `ORCH_CURSOR_PREINSTALL` | `1` | install worktree deps before a Cursor task run when a lockfile exists and `node_modules` is missing (`0` = off) |
 | `ORCH_PLAN_MIN_CHARS` / `ORCH_PLAN_MIN_CHARS_TOOL` | `600` / `80` | plan-first: minimum plan length without / with a Cursor createPlan body; shorter plans fail as truncated instead of being stored |
