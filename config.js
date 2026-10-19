@@ -64,6 +64,9 @@ module.exports = {
   CURSOR_REVIEW_MODEL: env.ORCH_CURSOR_REVIEW_MODEL || 'auto',  // default model for the advisory AI review
   CURSOR_TIMEOUT_MS: num(env.ORCH_CURSOR_TIMEOUT_MS, 15 * 60 * 1000),
   CURSOR_REVIEW_TIMEOUT_MS: num(env.ORCH_CURSOR_REVIEW_TIMEOUT_MS, 5 * 60 * 1000),
+  // plan-first: a plan without a createPlan body shorter than this is treated as truncated (not stored); with a createPlan body the floor is lower
+  PLAN_MIN_CHARS: num(env.ORCH_PLAN_MIN_CHARS, 600),
+  PLAN_MIN_CHARS_TOOL: num(env.ORCH_PLAN_MIN_CHARS_TOOL, 80),
   // The daily Cursor caps (ORCH_CURSOR_DAILY_CAP / ORCH_CURSOR_REVIEW_DAILY_CAP) were removed in schema v5: usage is only COUNTED now (db.cursorStats).
   // Cursor stays approval-only (start / plan / escalation clicks). If the old variables are still set we log a one-time notice and ignore them.
   CURSOR_CAP_ENV_IGNORED: ['ORCH_CURSOR_DAILY_CAP', 'ORCH_CURSOR_REVIEW_DAILY_CAP'].filter((k) => env[k] !== undefined && env[k] !== ''),

@@ -17,8 +17,18 @@ const out = (o) => console.log(JSON.stringify(o));
 out({ type: 'system', subtype: 'init', model: 'stub-model-1 (resolved from auto)', session_id: 's' + process.pid, permissionMode: mode, cwd: process.cwd() });
 setTimeout(() => {
   let text;
-  if (mode === 'plan') text = '1. Edit the service index.js\n2. Add a test\n3. Run the check\n(stub plan; context bundle present: ' + /PROJECT CONTEXT/.test(prompt) + ')';
-  else {
+  if (mode === 'plan') {
+    // like the real CLI: the full plan arrives as a createPlan tool call; the final `result` is only the assistant preamble.
+    // STUB_PLAN_TINY: no createPlan and a short preamble (truncated plan). STUB_PLAN_TEXT_ONLY: no createPlan, long assistant answer.
+    const plan = '1. Edit the service index.js\n2. Add a test\n3. Run the check\n(stub plan; context bundle present: ' + /PROJECT CONTEXT/.test(prompt) + ')';
+    if (/STUB_PLAN_TINY/.test(prompt)) text = "I'll trace the code before proposing a plan.";
+    else if (/STUB_PLAN_TEXT_ONLY/.test(prompt)) text = plan + '\n' + 'Details: '.padEnd(700, 'x');
+    else {
+      out({ type: 'tool_call', subtype: 'started', call_id: 'p1', tool_call: { createPlanToolCall: { args: { plan } } } });
+      out({ type: 'tool_call', subtype: 'completed', call_id: 'p1', tool_call: { createPlanToolCall: { args: { plan }, result: { success: {} } } } });
+      text = "I'll trace the code before proposing a plan.";
+    }
+  } else {
     const f = path.join(process.cwd(), `STUB-${process.pid}.md`);
     fs.writeFileSync(f, `stub change ${new Date().toISOString()}\n`);
     text = 'done (stub wrote ' + path.basename(f) + ')';

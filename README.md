@@ -387,6 +387,7 @@ The dashboard shows engine + model per task and a clear badge: **local** (green,
 | `ORCH_CURSOR_MODEL` | `auto` | default model for cursor/auto tasks |
 | `ORCH_CURSOR_REVIEW_MODEL` | `auto` | default model for the advisory review |
 | `ORCH_CURSOR_TIMEOUT_MS` / `ORCH_CURSOR_REVIEW_TIMEOUT_MS` | `900000` / `300000` | hard timeouts |
+| `ORCH_PLAN_MIN_CHARS` / `ORCH_PLAN_MIN_CHARS_TOOL` | `600` / `80` | plan-first: minimum plan length without / with a Cursor createPlan body; shorter plans fail as truncated instead of being stored |
 | `ORCH_ESCALATION_REQUIRE_APPROVAL` | `1` | `0` = auto-approve escalations (not recommended) |
 | `ORCH_CURSOR_STATUS_TTL_MS` / `ORCH_CURSOR_MODELS_TTL_MS` | `60000` / `600000` | cache TTLs |
 | `ORCH_POLL_MS` | `2000` | runner poll interval |

@@ -76,6 +76,7 @@ function validateTask(b) {
   }
   const check_cmd = b.check_cmd ? String(b.check_cmd).trim() : null;
   if (check_cmd && check_cmd.length > 1000) return { error: 'check_cmd too long' };
+  { const g = require('./lib/check-guard'); const why = check_cmd && g.longRunningReason(check_cmd); if (why) return { error: `check_cmd refused: ${why}; ${g.HINT}` }; }
 
   // project
   let project;
