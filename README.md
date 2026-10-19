@@ -387,6 +387,10 @@ The dashboard shows engine + model per task and a clear badge: **local** (green,
 | `ORCH_CURSOR_MODEL` | `auto` | default model for cursor/auto tasks |
 | `ORCH_CURSOR_REVIEW_MODEL` | `auto` | default model for the advisory review |
 | `ORCH_CURSOR_TIMEOUT_MS` / `ORCH_CURSOR_REVIEW_TIMEOUT_MS` | `2100000` / `300000` | hard timeouts (Cursor task run 35 min) |
+| `ORCH_LOCAL_MAX_REQUEST_CHARS` | `60000` | local (aider) request budget: message + context + pinned files + repo map; checked before the run and while aider auto-adds files named in the message (run stopped when exceeded) |
+| `ORCH_LOCAL_MAX_FILE_BYTES` | `65536` | tracked files above this size go into the generated aider ignore file (unless pinned) |
+| `ORCH_LOCAL_MAX_FILES` | `5` | more pinned files = multi-file task: refused by the local engine (engine `auto` then asks for the Cursor escalation) |
+| `ORCH_LOCAL_MAP_TOKENS` / `ORCH_LOCAL_MAP_TOKENS_WITH_FILES` | `2048` / `1024` | aider repo-map size without / with pinned files (was `0` = no map) |
 | `ORCH_AIDER_THINK` | `0` | `1` = let aider use the model's default thinking; by default aider gets `think: false` (model-settings file) for thinking-capable local models |
 | `ORCH_CURSOR_PREINSTALL` | `1` | install worktree deps before a Cursor task run when a lockfile exists and `node_modules` is missing (`0` = off) |
 | `ORCH_PLAN_MIN_CHARS` / `ORCH_PLAN_MIN_CHARS_TOOL` | `600` / `80` | plan-first: minimum plan length without / with a Cursor createPlan body; shorter plans fail as truncated instead of being stored |

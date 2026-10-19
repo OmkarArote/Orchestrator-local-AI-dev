@@ -51,6 +51,12 @@ module.exports = {
   ALLOW_MODEL_PULL: env.ORCH_ALLOW_MODEL_PULL === '1',                    // DISABLED by default: no pull/delete endpoint does anything unless this is 1
   MODEL: env.ORCH_MODEL || 'ollama_chat/qwen2.5-coder:7b',
   AIDER_BIN: env.ORCH_AIDER_BIN || path.join(HOME, '.local', 'bin', 'aider'),
+  // local request budget (swap-relook #5: one ~474 KB request stalled the 9B model; #9-#13: no files + no repo map = no code seen)
+  LOCAL_MAX_REQUEST_CHARS: num(env.ORCH_LOCAL_MAX_REQUEST_CHARS, 60000),  // message + context + pinned/auto-added files + repo map (~15k tokens)
+  LOCAL_MAX_FILE_BYTES: num(env.ORCH_LOCAL_MAX_FILE_BYTES, 64 * 1024),   // tracked files above this go into the aider ignore file (unless pinned)
+  LOCAL_MAX_FILES: num(env.ORCH_LOCAL_MAX_FILES, 5),                     // more pinned files = multi-file task: refused locally (Cursor / split)
+  LOCAL_MAP_TOKENS: num(env.ORCH_LOCAL_MAP_TOKENS, 2048),                // repo map when no files are pinned
+  LOCAL_MAP_TOKENS_WITH_FILES: num(env.ORCH_LOCAL_MAP_TOKENS_WITH_FILES, 1024),
   AIDER_THINK: env.ORCH_AIDER_THINK === '1', // default off: aider gets think:false for thinking-capable local models
   // hard timeouts (ms) for every subprocess
   AIDER_TIMEOUT_MS: num(env.ORCH_AIDER_TIMEOUT_MS, 20 * 60 * 1000),

@@ -11,9 +11,13 @@ const files = mi >= 0 ? a.slice(mi + 2) : [];
 const settingsIdx = a.indexOf('--model-settings-file');
 let settings = null;
 if (settingsIdx >= 0) { try { settings = fs.readFileSync(a[settingsIdx + 1], 'utf8'); } catch { settings = '(unreadable)'; } }
-fs.appendFileSync(LOG, JSON.stringify({ t: Date.now(), cwd: process.cwd(), model: a[a.indexOf('--model') + 1], files, settings, readFiles: a.filter((x, i) => a[i - 1] === '--read'), args: a.filter((x) => x !== message) }) + '\n');
+const ig = a.indexOf('--aiderignore');
+fs.appendFileSync(LOG, JSON.stringify({ t: Date.now(), cwd: process.cwd(), model: a[a.indexOf('--model') + 1], files, settings, readFiles: a.filter((x, i) => a[i - 1] === '--read'), args: a.filter((x) => x !== message),
+  message, aiderignore: ig >= 0 ? (() => { try { return fs.readFileSync(a[ig + 1], 'utf8'); } catch { return '(unreadable)'; } })() : null }) + '\n');
 console.log('stub-aider: starting');
 console.error('stub-aider: stderr line');
+const pr = message.match(/STUB_PRINT<<([^>]*)>>/); // STUB_PRINT<<a.txt|b.txt>> prints those lines like aider's "Add file to the chat?" subjects
+if (pr) for (const l of pr[1].split('|')) console.log(l);
 if (/STUB_FAIL/.test(message)) { console.log('stub-aider: failing on request'); process.exit(1); }
 if (/STUB_SLOW/.test(message)) { setTimeout(() => process.exit(0), 600000); return; }
 const ap = message.match(/STUB_APPEND<<([\s\S]*?)>>/); // STUB_APPEND<<text with \\n>> writes that text instead of the default line (feature/contract tests)
