@@ -619,6 +619,38 @@ async function api(req, res, url) {
   if (url.pathname === '/api/attachments' || url.pathname.startsWith('/api/attachments/') || url.pathname === '/api/media/tools') return attachmentsApi(req, res, url);
   if (url.pathname.startsWith('/api/conversations') || url.pathname === '/api/llm/info' || url.pathname.startsWith('/api/mentions/')) return chatApi(req, res, url);
   if (url.pathname.startsWith('/api/projects')) return projectsApi(req, res, url);
+  if (url.pathname === '/api/do' && req.method === 'POST') {
+    if (cfg.FLOW !== 'v2') return fail(res, 400, 'POST /api/do requires ORCH_FLOW=v2');
+    const b = await readJson(req);
+    const prompt = String(b.prompt || '').trim();
+    const serviceName = String(b.service || '').trim();
+    if (!prompt) return fail(res, 400, 'prompt required');
+    if (!serviceName) return fail(res, 400, 'service required');
+    let found = null;
+    for (const p of store.listProjects()) {
+      const s = store.listServices(p.id).find((x) => x.name === serviceName);
+      if (s) { found = { p, s }; break; }
+    }
+    if (!found) return fail(res, 404, `service '${serviceName}' not found`);
+    if (found.p.archived) return fail(res, 409, `project '${found.p.name}' is archived`);
+    const title = String(b.title || prompt).trim().slice(0, 200);
+    const v = validateTask({
+      project_id: found.p.id, service_id: String(found.s.id), title, prompt, files: b.files || [],
+      check_cmd: b.check_cmd || null, engine: 'auto', allow_escalation: true, plan_first: false, ai_review: false,
+    });
+    if (v.error) return fail(res, v.status || 400, v.error);
+    if (b.base != null && b.base !== '') {
+      const base = String(b.base).trim();
+      if (!base || base.startsWith('-') || base.includes('..')) return fail(res, 400, 'invalid base');
+      v.base_ref = base;
+    }
+    const id = store.createTask(v);
+    if (v.base_ref) store.updateFields(id, { base_ref: v.base_ref });
+    store.addEvent(id, 'system', `orc do: task created approved (ORCH_FLOW=v2, no start click${v.base_ref ? ', base ' + v.base_ref : ''})`);
+    store.addApproval(id, 'start', 'approved', 'orc do (ORCH_FLOW=v2)');
+    if (!store.transition(id, 'pending', 'approved')) return fail(res, 409, 'could not approve the task');
+    return sendJson(res, 201, store.getTask(id));
+  }
   const m = url.pathname.match(/^\/api\/tasks(?:\/(\d+)(?:\/([a-z-]+))?)?$/);
   if (!m) return fail(res, 404, 'unknown endpoint');
   const [, idStr, action] = m;
