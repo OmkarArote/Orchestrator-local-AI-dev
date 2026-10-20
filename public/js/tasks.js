@@ -191,10 +191,13 @@ function overrideForm(t, o, rerender) {
 
 async function renderDetail(pane, id, { stream, tab: startTab }) {
   let sig = '', tab = 'log', term = null, timer = null, diffLoaded = false;
-  const head = el('div', { className: 'stack' }); const side = el('aside', { className: 'task-side stack', 'aria-label': 'Task details' });
-  const logHost = el('div'); const diffHost = el('div', { style: { display: 'none' } });
+  const head = el('div', { className: 'task-head stack' });
+  const promptHost = el('div', { className: 'task-prompt' });
+  const actionsHost = el('div', { className: 'task-actions' });
+  const logHost = el('div', { className: 'log-host' }); const diffHost = el('div', { className: 'diff-host', style: { display: 'none' } });
+  const tail = el('div', { className: 'task-tail stack' });
   const tabLog = el('button', { className: 'on', textContent: 'Live log', onclick: () => setTab('log') }), tabDiff = el('button', { textContent: 'Diff', onclick: () => setTab('diff') });
-  clear(pane, el('div', { className: 'task-detail' }, el('div', { className: 'task-main stack' }, head, el('div', { className: 'tabs mt' }, tabLog, tabDiff), logHost, diffHost), side));
+  clear(pane, el('div', { className: 'task-fill' }, head, el('div', { className: 'task-mid' }, promptHost, actionsHost, el('div', { className: 'tabs' }, tabLog, tabDiff), logHost, diffHost), tail));
   term = terminal(id, { stream }); logHost.append(term.node);
   function setTab(t) { tab = t; logHost.style.display = t === 'log' ? '' : 'none'; diffHost.style.display = t === 'diff' ? '' : 'none'; tabLog.className = t === 'log' ? 'on' : ''; tabDiff.className = t === 'diff' ? 'on' : ''; if (t === 'diff') loadDiff(); }
   async function loadDiff() { clear(diffHost, skeletonLines(5)); try { renderDiff(diffHost, await api(`/tasks/${id}/diff`)); } catch (e) { clear(diffHost, el('div', { className: 'callout bad' }, e.message)); } }
@@ -203,18 +206,18 @@ async function renderDetail(pane, id, { stream, tab: startTab }) {
   api(`/tasks/${id}`).then(async (d) => { attInfo = d; await loadServices(d.project_id); draw(true); }).catch(() => {});
   function draw(force) {
     const t = S.tasks.find((x) => x.id === id);
-    if (!t) { clear(side); clear(head, empty({ icon: '?', title: `Task #${id} not found`, text: 'It may have been deleted with its project.' })); return; }
+    if (!t) { clear(tail); clear(promptHost); clear(actionsHost); clear(head, empty({ icon: '?', title: `Task #${id} not found`, text: 'It may have been deleted with its project.' })); return; }
     const s = JSON.stringify([t, mpOf(t), (S.svc[t.project_id] || []).length, S.cfg && S.cfg.router]);
     if (!force && s === sig && head.childNodes.length) return; sig = s;
     const p = project(t.project_id);
     const svcPath = t.service_id ? ((S.svc[t.project_id] || []).find((x) => x.id === t.service_id) || {}).path : null;
-    const kids = [
+    const titleBits = [
       el('div', { className: 'crumbs' }, el('a', { href: '#/tasks' }, 'Tasks'), ' / ', el('a', { href: `#/projects/${t.project_id}/services` }, t.project_name || projName(t.project_id))),
       el('div', { className: 'row' }, el('h2', {}, `#${t.id} ${t.title}`), statusBadge(shown(t))),
       el('div', { className: 'row' }, ...taskBadges(t), isCloud(t) ? badge('runs on Cursor servers (uses Pro usage)', 'cloud') : badge(`local: aider + ollama on this Mac${S.cfg ? ' (' + S.cfg.local_model + ')' : ''}`, 'e-local nodot'),
         t.engine_used ? chip('engine used: ' + t.engine_used) : null, t.allow_escalation ? chip('escalation allowed') : null, t.ai_review ? chip(`AI review (${t.review_model || 'auto'})`) : null),
-      el('pre', { className: 'plain' }, t.prompt),
     ];
+    const metaBits = [];
     const facts = [
       el('dl', { className: 'kv small' }, el('dt', {}, 'Service'), el('dd', {}, t.service_name ? t.service_name + (svcPath && svcPath !== '.' ? ` (${svcPath})` : '') : '-'), el('dt', {}, 'Branch'), el('dd', {}, t.branch ? el('code', {}, t.branch) : '-'),
         el('dt', {}, 'Files'), el('dd', {}, t.files.join(', ') || '-'), el('dt', {}, 'Check'), el('dd', {}, t.check_cmd || `${t.service_name ? 'service/' : ''}project default (${p ? p.check_cmd : '?'})`), t.head_sha ? [el('dt', {}, 'Head'), el('dd', {}, el('code', {}, t.head_sha.slice(0, 10)))] : null),
@@ -223,11 +226,11 @@ async function renderDetail(pane, id, { stream, tab: startTab }) {
     if (t.group_id) facts.push(el('div', { className: 'small dim' }, `Part of sequence #${t.group_id}, step ${t.step_no}${t.base_ref ? '; built on top of ' + t.base_ref : ''}. Diff compares against ${t.base_ref || 'the default branch'}. `, el('a', { href: `#/projects/${t.project_id}/sequences` }, 'open sequences')));
     if (t.routing && t.routing.split_parent) facts.push(el('div', { className: 'small dim' }, 'The full original request is stored once on ', el('a', { href: `#/tasks/${t.routing.split_parent}` }, `task #${t.routing.split_parent}`), '.'));
     if (attInfo && attInfo.attachments && attInfo.attachments.length) facts.push(el('div', { className: 'small' }, `sent to Cursor: ${attInfo.sent_to_cursor ? 'yes' : 'no'}`));
-    const sideKids = [el('div', { className: 'card stack' }, el('h3', {}, 'Details'), ...facts), lineageCard(t.id)];
-    const rc = routingCard(t); if (rc) sideKids.splice(1, 0, rc);
-    if (t.result_summary) kids.push(el('div', { className: 'callout' }, el('b', {}, 'Result: '), t.result_summary));
-    if (t.supervised) kids.push(el('div', { className: 'callout warn' }, "SUPERVISED: a hands-on session (Cursor IDE / CLI) is open on this task's worktree. The runner is paused for it; merge and approvals are blocked. Edit as you like, then click Release: the orchestrator runs the check and commits the worktree state on the task branch (\u2192 review)."));
-    if (t.status === 'awaiting_escalation') kids.push(el('div', { className: 'callout warn' }, `Local attempt failed. Escalate to Cursor (model ${t.model || 'auto'})? This runs on Cursor servers and uses your Pro usage. Nothing has been sent to Cursor yet.`));
+    metaBits.push(el('div', { className: 'card stack' }, el('h3', {}, 'Details'), ...facts));
+    const rc = routingCard(t); if (rc) metaBits.push(rc);
+    if (t.result_summary) metaBits.push(el('div', { className: 'callout' }, el('b', {}, 'Result: '), t.result_summary));
+    if (t.supervised) metaBits.push(el('div', { className: 'callout warn' }, "SUPERVISED: a hands-on session (Cursor IDE / CLI) is open on this task's worktree. The runner is paused for it; merge and approvals are blocked. Edit as you like, then click Release: the orchestrator runs the check and commits the worktree state on the task branch (\u2192 review)."));
+    if (t.status === 'awaiting_escalation') metaBits.push(el('div', { className: 'callout warn' }, `Local attempt failed. Escalate to Cursor (model ${t.model || 'auto'})? This runs on Cursor servers and uses your Pro usage. Nothing has been sent to Cursor yet.`));
     if (t.plan_text) {
       const pc = el('div', { className: 'callout plan stack' }, el('b', {}, `Cursor plan (${t.plan_state}${t.model_used ? ', model ' + t.model_used : ''})`));
       if (t.status === 'awaiting_plan') {
@@ -235,13 +238,14 @@ async function renderDetail(pane, id, { stream, tab: startTab }) {
         const ta = el('textarea', { className: 'big', style: { minHeight: '240px' }, value: planEdit[t.id], oninput: () => { planEdit[t.id] = ta.value; } });
         pc.append(el('div', { className: 'small dim' }, 'Read-only planning run (--mode plan). You can edit the plan; implementation (a second Cursor run, counted in the usage counters) starts only after you approve.'), ta);
       } else pc.append(el('pre', { className: 'plain' }, t.plan_text));
-      kids.push(pc);
+      metaBits.push(pc);
     }
-    if (t.review_summary) kids.push(el('div', { className: 'callout info stack' }, el('b', {}, 'Advisory AI review'), el('pre', { className: 'plain' }, t.review_summary)));
-    for (const m of mpOf(t)) kids.push(proposalCard(m, async () => { await loadMem(); draw(true); }, true));
+    if (t.review_summary) metaBits.push(el('div', { className: 'callout info stack' }, el('b', {}, 'Advisory AI review'), el('pre', { className: 'plain' }, t.review_summary)));
+    for (const m of mpOf(t)) metaBits.push(proposalCard(m, async () => { await loadMem(); draw(true); }, true));
 
+    const actionBits = [];
     const pending = t.status === 'pending'; let o = null;
-    if (pending && t.routing_state !== 'routing') { o = ovr[t.id] || (ovr[t.id] = initOverrides(t)); kids.push(overrideForm(t, o, () => draw(true))); }
+    if (pending && t.routing_state !== 'routing') { o = ovr[t.id] || (ovr[t.id] = initOverrides(t)); actionBits.push(overrideForm(t, o, () => draw(true))); }
     const row = el('div', { className: 'row' });
     const act = (label, cls, path, { reason = false, ask = null, body = null, danger = false } = {}) => row.append(el('button', { className: `btn ${cls}`, textContent: label, onclick: async (e) => {
       const b = body ? body() : {}; const btn = e.currentTarget;
@@ -254,7 +258,7 @@ async function renderDetail(pane, id, { stream, tab: startTab }) {
     } }));
     const base = p ? p.default_branch : 'base'; const sup = t.supervised;
     if (pending) {
-      if (t.routing_state === 'routing') kids.push(el('div', { className: 'small dim' }, 'Approve start is available once routing finishes.'));
+      if (t.routing_state === 'routing') actionBits.push(el('div', { className: 'small dim' }, 'Approve start is available once routing finishes.'));
       else {
         act('Approve start', 'ok', 'approve-start', { ask: () => (o.engine !== 'local' ? `This task runs on Cursor servers (engine ${o.engine}) and may use your Pro usage. Start it?` : null),
           body: () => ({ service_id: o.service_id || undefined, engine: o.engine, model: o.engine !== 'local' ? o.model : '', plan_first: o.plan_first, allow_escalation: o.allow_escalation, use_routing: !!(t.routing && t.routing.suggestion) }) });
@@ -294,10 +298,9 @@ async function renderDetail(pane, id, { stream, tab: startTab }) {
         await loadTasks(); draw(true);
       } }));
     }
-    kids.push(row);
     if (['review', 'done'].includes(t.status) && !sup) {
       const ta = el('textarea', { placeholder: 'Describe the change. It runs on this same branch and comes back to review.', rows: 3 });
-      kids.push(el('div', { className: 'stack' }, el('b', {}, 'Request changes'), ta, el('button', { className: 'btn sec', textContent: 'Request changes', onclick: async (e) => {
+      actionBits.push(el('div', { className: 'stack' }, el('b', {}, 'Request changes'), ta, el('button', { className: 'btn sec', textContent: 'Request changes', onclick: async (e) => {
         const instruction = ta.value.trim();
         if (!instruction) { toast('Write the change first', 'bad'); return; }
         try {
@@ -307,8 +310,10 @@ async function renderDetail(pane, id, { stream, tab: startTab }) {
         } catch (er) { toastError(er); }
       } })));
     }
-    clear(head, ...kids);
-    clear(side, ...sideKids);
+    clear(head, el('div', { className: 'task-title stack' }, ...titleBits), el('div', { className: 'task-meta stack' }, ...metaBits));
+    clear(promptHost, el('pre', { className: 'plain' }, t.prompt));
+    clear(actionsHost, ...actionBits, row);
+    clear(tail, lineageCard(t.id));
   }
   draw(true);
   if (startTab === 'diff') setTab('diff');

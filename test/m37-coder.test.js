@@ -52,6 +52,7 @@ describe('M37 coder', () => {
     assert.ok(args.includes('--edit-format'));
     assert.equal(args[args.indexOf('--edit-format') + 1], 'diff');
     assert.ok(args.includes('--no-auto-commits'));
+    assert.ok(args.includes('--no-show-model-warnings'));
     const same = await editAider({
       wt, rel: 'a.js', prompt: 'bump n', model: 'ornith:9b',
       runCmd: async () => ({ code: 0 }),
