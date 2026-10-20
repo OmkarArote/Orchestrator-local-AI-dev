@@ -133,6 +133,28 @@ module.exports = {
   LAYA_KEEP: env.ORCH_LAYA_KEEP === '1',
   LAYA_PYTHON: env.ORCH_LAYA_PYTHON || 'python3',
   LAYA_MODEL: env.ORCH_LAYA_MODEL || '',
+  // Cost router. Off unless ORCH_COST_ROUTER=1. Cache, stable prompt prefix, and per-role keep_alive stay unused until then.
+  COST_ROUTER: env.ORCH_COST_ROUTER === '1',
+  ROUTE_MAX_TOKENS: boundedInt('ORCH_ROUTE_MAX_TOKENS', env.ORCH_ROUTE_MAX_TOKENS, 6000, 200, 200000),
+  ROUTE_MAX_FILES: boundedInt('ORCH_ROUTE_MAX_FILES', env.ORCH_ROUTE_MAX_FILES, 3, 1, 50),
+  ROUTE_FAIL_RATE: num(env.ORCH_ROUTE_FAIL_RATE, 0.5),
+  ROLE_KEEP_ALIVE: {
+    reader: env.ORCH_KEEP_ALIVE_READER || '5m',
+    planner: env.ORCH_KEEP_ALIVE_PLANNER || '10m',
+    coder: env.ORCH_KEEP_ALIVE_CODER || '30m',
+    repair: env.ORCH_KEEP_ALIVE_REPAIR || '30m',
+    review: env.ORCH_KEEP_ALIVE_REVIEW || '5m',
+    merge: env.ORCH_KEEP_ALIVE_MERGE || '5m',
+  },
+  // Guardrails. Off unless ORCH_GUARDRAILS=1.
+  GUARDRAILS: env.ORCH_GUARDRAILS === '1',
+  GUARD_MAX_FILES: boundedInt('ORCH_GUARD_MAX_FILES', env.ORCH_GUARD_MAX_FILES, 8, 1, 100),
+  GUARD_MAX_LINES: boundedInt('ORCH_GUARD_MAX_LINES', env.ORCH_GUARD_MAX_LINES, 400, 1, 100000),
+  // Agent tool loop. Off unless ORCH_AGENT_LOOP=1. Aider stays the coder.
+  AGENT_LOOP: env.ORCH_AGENT_LOOP === '1',
+  AGENT_MAX_ITER: boundedInt('ORCH_AGENT_MAX_ITER', env.ORCH_AGENT_MAX_ITER, 6, 1, 30),
+  AGENT_TOKEN_BUDGET: boundedInt('ORCH_AGENT_TOKEN_BUDGET', env.ORCH_AGENT_TOKEN_BUDGET, 8000, 100, 200000),
+  JUDGE_MODEL: env.ORCH_JUDGE_MODEL || 'qwen3.5:9b',
   // hard timeouts (ms) for every subprocess
   AIDER_TIMEOUT_MS: num(env.ORCH_AIDER_TIMEOUT_MS, 20 * 60 * 1000),
   INSTALL_TIMEOUT_MS: num(env.ORCH_INSTALL_TIMEOUT_MS, 10 * 60 * 1000),

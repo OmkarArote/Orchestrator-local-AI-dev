@@ -1,0 +1,11 @@
+{
+  "name": "mini-api",
+  "private": true,
+  "scripts": {
+    "check": "node --check scripts/ok.js"
+  },
+  "dependencies": {
+    "@nestjs/common": "10.0.0",
+    "@nestjs/core": "10.0.0"
+  }
+}

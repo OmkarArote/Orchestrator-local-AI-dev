@@ -9,3 +9,4 @@ test/.tmp/
 *.db
 *.db-*
 private-docs/
+evals/results/

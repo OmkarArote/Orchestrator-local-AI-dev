@@ -8,6 +8,7 @@
   "scripts": {
     "start": "node server.js",
     "test": "node --test --test-concurrency=4 \"test/**/*.test.js\"",
+    "eval": "node scripts/eval.js",
     "test:m0": "node --test --test-concurrency=4 \"test/m0-*.test.js\"",
     "setup": "./setup.sh",
     "doctor": "./setup.sh"

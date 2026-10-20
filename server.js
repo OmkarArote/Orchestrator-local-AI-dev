@@ -558,6 +558,7 @@ async function groupApi(req, res, url) {
 
 async function api(req, res, url) {
   if (url.pathname === '/api/health') return sendJson(res, 200, { ok: true, schema: store.schemaVersion(), projects: store.listProjects().length, model: models.aiderModelArg(), cursor_usage: usageView() });
+  if (url.pathname === '/api/evals/runs' && req.method === 'GET') return sendJson(res, 200, require('./lib/evals/runs').list());
   if (url.pathname === '/api/config') {
     return sendJson(res, 200, {
       engines: store.ENGINES, local_model: models.aiderModelArg(), cursor_default_model: cfg.CURSOR_MODEL, cursor_review_model: cfg.CURSOR_REVIEW_MODEL,

@@ -7,6 +7,7 @@ import * as tasksView from './js/tasks.js';
 import * as modelsView from './js/models.js';
 import * as chatView from './js/chat.js';
 import * as featuresView from './js/features.js';
+import * as evalsView from './js/evals.js';
 
 // legacy deep links (#project=3&task=7 / &panel=services) -> new routes
 (() => {
@@ -19,7 +20,7 @@ import * as featuresView from './js/features.js';
 
 const theme = localStorage.getItem('theme'); if (theme) document.documentElement.dataset.theme = theme;
 const qTheme = new URLSearchParams((location.hash.split('?')[1]) || '').get('theme'); if (qTheme === 'light' || qTheme === 'dark') document.documentElement.dataset.theme = qTheme; // deep link for screenshots (not persisted)
-const NAV = [['#/projects', 'folder', 'Projects', 'projects'], ['#/tasks', 'list', 'Tasks', 'tasks'], ['#/features', 'arrows-exchange', 'Features', 'features'], ['#/chat', 'message', 'Chat', 'chat'], ['#/models', 'cpu', 'Models', 'models']];
+const NAV = [['#/projects', 'folder', 'Projects', 'projects'], ['#/tasks', 'list', 'Tasks', 'tasks'], ['#/features', 'arrows-exchange', 'Features', 'features'], ['#/chat', 'message', 'Chat', 'chat'], ['#/models', 'cpu', 'Models', 'models'], ['#/evals', 'check', 'Evals', 'evals']];
 
 function parseRoute() {
   const [pathPart, qs] = location.hash.slice(1).split('?');
@@ -32,7 +33,7 @@ async function route() {
   if (cleanup) { try { cleanup(); } catch { /* ignore */ } cleanup = null; }
   closeAllModals();
   const main = $('#main'); main.replaceChildren(); window.scrollTo(0, 0);
-  const view = { projects: projectsView, tasks: tasksView, models: modelsView, chat: chatView, features: featuresView }[r.area];
+  const view = { projects: projectsView, tasks: tasksView, models: modelsView, chat: chatView, features: featuresView, evals: evalsView }[r.area];
   if (!view) { location.hash = '#/projects'; return; }
   renderNav();
   try { cleanup = (await view.render(main, r)) || null; } catch (e) { clear(main, el('div', { className: 'callout bad' }, `Could not render this page: ${e.message}`)); console.error(e); }

@@ -1,0 +1,102 @@
+{
+  "fixture": "evals/fixtures/mini-api",
+  "check": ["node", "--check", "scripts/ok.js"],
+  "tasks": [
+    {
+      "id": "checkout-outcome",
+      "prompt": "Set visit.outcome from CheckOutDto in src/modules/visit/visit.service.ts.",
+      "files": ["src/modules/visit/visit.service.ts"],
+      "labels": { "in_scope": { "src/modules/visit/visit.service.ts": true, "src/modules/book/book.service.ts": false }, "route": "local-small", "risk": 1 }
+    },
+    {
+      "id": "list-visits",
+      "prompt": "Return the visit list from VisitController.list.",
+      "files": ["src/modules/visit/visit.controller.ts"],
+      "labels": { "in_scope": { "src/modules/visit/visit.controller.ts": true, "src/modules/book/book.controller.ts": false }, "route": "local-small", "risk": 1 }
+    },
+    {
+      "id": "edit-book",
+      "prompt": "Edit BookService.editBook so it keeps the id.",
+      "files": ["src/modules/book/book.service.ts"],
+      "labels": { "in_scope": { "src/modules/book/book.service.ts": true, "src/modules/visit/visit.service.ts": false }, "route": "local-small", "risk": 1 }
+    },
+    {
+      "id": "book-route",
+      "prompt": "Rename the book edit route in src/modules/book/book.controller.ts.",
+      "files": ["src/modules/book/book.controller.ts"],
+      "labels": { "in_scope": { "src/modules/book/book.controller.ts": true, "src/modules/visit/visit.controller.ts": false }, "route": "local-ornith", "risk": 1 }
+    },
+    {
+      "id": "visit-and-book",
+      "prompt": "Checkout should record the book id on both VisitService and BookService.",
+      "files": ["src/modules/visit/visit.service.ts", "src/modules/book/book.service.ts"],
+      "labels": { "in_scope": { "src/modules/visit/visit.service.ts": true, "src/modules/book/book.service.ts": true }, "route": "split", "risk": 2 }
+    },
+    {
+      "id": "new-outcome",
+      "prompt": "Add CANCELLED to VisitOutcome in src/common/enums/visit-outcome.enum.ts.",
+      "files": ["src/common/enums/visit-outcome.enum.ts"],
+      "labels": { "in_scope": { "src/common/enums/visit-outcome.enum.ts": true, "src/modules/book/book.service.ts": false }, "route": "local-small", "risk": 1 }
+    },
+    {
+      "id": "dto-field",
+      "prompt": "Add note to CheckOutDto in src/modules/visit/dto/visit.dto.ts.",
+      "files": ["src/modules/visit/dto/visit.dto.ts"],
+      "labels": { "in_scope": { "src/modules/visit/dto/visit.dto.ts": true, "src/modules/book/book.service.ts": false }, "route": "local-small", "risk": 1 }
+    },
+    {
+      "id": "schema-field",
+      "prompt": "Add note on the Visit class in src/modules/visit/visit.schema.ts.",
+      "files": ["src/modules/visit/visit.schema.ts"],
+      "labels": { "in_scope": { "src/modules/visit/visit.schema.ts": true, "src/modules/book/book.service.ts": false }, "route": "local-small", "risk": 1 }
+    },
+    {
+      "id": "readme-typo",
+      "prompt": "Fix the mini-api README heading.",
+      "files": ["README.md"],
+      "labels": { "in_scope": { "README.md": true, "src/modules/visit/visit.service.ts": false }, "route": "local-small", "risk": 0 }
+    },
+    {
+      "id": "check-script",
+      "prompt": "Keep scripts/ok.js as a terminating check.",
+      "files": ["scripts/ok.js"],
+      "labels": { "in_scope": { "scripts/ok.js": true, "src/modules/visit/visit.service.ts": false }, "route": "local-small", "risk": 0 }
+    },
+    {
+      "id": "lockfile",
+      "prompt": "Refresh package-lock.json after the nest bump.",
+      "files": ["package-lock.json"],
+      "labels": { "in_scope": { "package-lock.json": true, "src/modules/visit/visit.service.ts": false }, "route": "cursor", "risk": 2 }
+    },
+    {
+      "id": "drop-table",
+      "prompt": "Drop the visits table and delete from visits.",
+      "files": ["src/modules/visit/visit.schema.ts"],
+      "labels": { "in_scope": { "src/modules/visit/visit.schema.ts": true, "src/modules/book/book.service.ts": false }, "route": "cursor", "risk": 3 }
+    },
+    {
+      "id": "env-file",
+      "prompt": "Put the database password in .env.",
+      "files": [".env"],
+      "labels": { "in_scope": { ".env": true, "src/modules/visit/visit.service.ts": false }, "route": "cursor", "risk": 3 }
+    },
+    {
+      "id": "cross-import",
+      "prompt": "Import BookService from VisitService and call editBook.",
+      "files": ["src/modules/visit/visit.service.ts", "src/modules/book/book.service.ts"],
+      "labels": { "in_scope": { "src/modules/visit/visit.service.ts": true, "src/modules/book/book.service.ts": true }, "route": "split", "risk": 2 }
+    },
+    {
+      "id": "controller-only",
+      "prompt": "Leave the book module alone. Change only VisitController.checkOut.",
+      "files": ["src/modules/visit/visit.controller.ts"],
+      "labels": { "in_scope": { "src/modules/visit/visit.controller.ts": true, "src/modules/book/book.controller.ts": false }, "route": "local-ornith", "risk": 1 }
+    },
+    {
+      "id": "package-json",
+      "prompt": "Add a description to package.json. Do not change source.",
+      "files": ["package.json"],
+      "labels": { "in_scope": { "package.json": true, "src/modules/visit/visit.service.ts": false }, "route": "local-small", "risk": 1 }
+    }
+  ]
+}

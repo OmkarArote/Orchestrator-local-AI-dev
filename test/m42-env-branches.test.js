@@ -38,7 +38,7 @@ describe('schema v7 migration', () => {
   it('a brand-new database is v7 with the columns and no backup', () => {
     const fresh = path.join(dir, 'fresh', 'orchestrator.db');
     fs.mkdirSync(path.dirname(fresh), { recursive: true });
-    assert.equal(openNew(fresh).v, 10);
+    assert.equal(openNew(fresh).v, 11);
     for (const c of ['dev_branch', 'uat_branch', 'live_branch']) assert.equal(col(fresh, 'services', c), true, c);
     assert.equal(col(fresh, 'tasks', 'flow'), true);
     assert.equal(col(fresh, 'tasks', 'iteration'), true);
@@ -47,7 +47,7 @@ describe('schema v7 migration', () => {
 
   it('v6 -> v7 keeps rows, defaults flow and iteration, and writes one backup', () => {
     const db = path.join(dir, 'up.db');
-    assert.equal(openNew(db).v, 10);
+    assert.equal(openNew(db).v, 11);
     const w = new DatabaseSync(db);
     w.exec("INSERT INTO projects (name, slug, path, default_branch, check_cmd) VALUES ('p','p','','','true')");
     w.exec("INSERT INTO services (project_id, name, path, local_path, default_branch) VALUES (1,'api','.','/x','main')");
@@ -57,7 +57,7 @@ describe('schema v7 migration', () => {
     rewindToV6(db);
     assert.equal(rows(db, 'SELECT user_version v FROM pragma_user_version')[0].v, 6);
     assert.equal(col(db, 'services', 'dev_branch'), false);
-    assert.equal(openNew(db).v, 10);
+    assert.equal(openNew(db).v, 11);
     assert.equal(rows(db, 'SELECT COUNT(*) c FROM tasks')[0].c, before);
     assert.equal(rows(db, 'SELECT flow, iteration FROM tasks')[0].flow, 'v1');
     assert.equal(rows(db, 'SELECT iteration FROM tasks')[0].iteration, 1);
@@ -65,19 +65,19 @@ describe('schema v7 migration', () => {
     const backups = fs.readdirSync(dir).filter((f) => f.startsWith('pre-v7-migration-'));
     assert.equal(backups.length, 1);
     assert.equal(rows(path.join(dir, backups[0]), 'SELECT user_version v FROM pragma_user_version')[0].v, 6);
-    assert.equal(openNew(db).v, 10);
+    assert.equal(openNew(db).v, 11);
     assert.equal(fs.readdirSync(dir).filter((f) => f.startsWith('pre-v7-migration-')).length, 1, 'a second open does not back up again');
   });
 
   it('failure injection rolls back to v6 and a clean retry reaches v7', () => {
     const db = path.join(dir, 'fail.db');
-    assert.equal(openNew(db).v, 10);
+    assert.equal(openNew(db).v, 11);
     rewindToV6(db);
     assert.throws(() => openNew(db, { ORCH_TEST_FAIL_MIGRATION_V7: '1' }), (e) => /v7 migration failed and was rolled back/.test(String(e.stderr)) && /injected failure/.test(String(e.stderr)));
     assert.equal(rows(db, 'SELECT user_version v FROM pragma_user_version')[0].v, 6);
     assert.equal(col(db, 'services', 'dev_branch'), false);
     assert.equal(col(db, 'tasks', 'flow'), false);
-    assert.equal(openNew(db).v, 10);
+    assert.equal(openNew(db).v, 11);
     assert.equal(col(db, 'tasks', 'iteration'), true);
   });
 });

@@ -114,7 +114,7 @@ describe('rag store', () => {
   it('stores chunks and a float32 blob, and a second rebuild embeds nothing', async () => {
     calls.length = 0;
     const view = await build.rebuild(service, project, { summaries: false, embedder });
-    assert.equal(store.schemaVersion(), 10);
+    assert.equal(store.schemaVersion(), 11);
     const chunks = store.db.prepare('SELECT path, kind, name, text FROM index_chunks WHERE service_id = ?').all(service.id);
     assert.ok(chunks.some((c) => c.path === SERVICE && c.name === 'checkOut'));
     assert.ok(chunks.some((c) => c.path === 'notes.txt' && c.kind === 'window'));
@@ -187,13 +187,13 @@ describe('rag migration v10', () => {
     delete envFor().ORCH_RAG;
     const open = (extra) => execFileSync(process.execPath, ['--no-warnings', '-e', "const s=require('./lib/db'); console.log(JSON.stringify({v:s.schemaVersion()}))"], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: envFor(extra) });
     try {
-      assert.equal(JSON.parse(open().trim().split('\n').filter((l) => !l.startsWith('[db]')).pop()).v, 10);
+      assert.equal(JSON.parse(open().trim().split('\n').filter((l) => !l.startsWith('[db]')).pop()).v, 11);
       const w = new DatabaseSync(db);
       w.exec('DROP TABLE index_chunk_vectors');
       w.exec('DROP TABLE index_chunks');
       w.exec('PRAGMA user_version = 9');
       w.close();
-      assert.equal(JSON.parse(open().trim().split('\n').filter((l) => !l.startsWith('[db]')).pop()).v, 10);
+      assert.equal(JSON.parse(open().trim().split('\n').filter((l) => !l.startsWith('[db]')).pop()).v, 11);
       const d = new DatabaseSync(db, { readOnly: true });
       assert.equal(d.prepare("SELECT COUNT(*) c FROM sqlite_master WHERE name IN ('index_chunks','index_chunk_vectors')").get().c, 2);
       d.close();

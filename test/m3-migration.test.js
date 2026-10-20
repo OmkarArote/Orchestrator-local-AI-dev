@@ -41,7 +41,7 @@ describe('M3 migration v3 -> v4 (-> v5) on a COPY of the clean-slate fixture', {
     const before = rows(db, "SELECT (SELECT COUNT(*) FROM projects) p, (SELECT COUNT(*) FROM tasks) t, (SELECT COUNT(*) FROM approvals) a, (SELECT COUNT(*) FROM task_events) e, (SELECT COUNT(*) FROM cursor_usage) u, (SELECT user_version FROM pragma_user_version) v")[0];
     assert.equal(before.v, 3);
     const out = JSON.parse(openWithNewCode(db));
-    assert.equal(out.v, 10);
+    assert.equal(out.v, 11);
     const after = rows(db, "SELECT (SELECT COUNT(*) FROM projects) p, (SELECT COUNT(*) FROM tasks) t, (SELECT COUNT(*) FROM approvals) a, (SELECT COUNT(*) FROM task_events) e, (SELECT COUNT(*) FROM cursor_usage) u")[0];
     assert.deepEqual({ ...after }, { p: before.p, t: before.t, a: before.a, e: before.e, u: before.u });
     assert.deepEqual({ ...after }, { p: 3, t: 6, a: 8, e: 210, u: 1 });
@@ -89,7 +89,7 @@ describe('M3 migration v3 -> v4 (-> v5) on a COPY of the clean-slate fixture', {
   });
   it('idempotent: re-opening changes nothing and writes no second backup', () => {
     const snap = JSON.stringify(rows(db, 'SELECT id, local_path, status FROM services ORDER BY id'));
-    assert.equal(JSON.parse(openWithNewCode(db)).v, 10);
+    assert.equal(JSON.parse(openWithNewCode(db)).v, 11);
     assert.equal(JSON.stringify(rows(db, 'SELECT id, local_path, status FROM services ORDER BY id')), snap);
     assert.equal(fs.readdirSync(dir).filter((f) => /^pre-v4-migration/.test(f)).length, 1);
     assert.equal(fs.readdirSync(dir).filter((f) => /^pre-v5-migration/.test(f)).length, 1);
@@ -113,18 +113,18 @@ describe('M3 migration: failure injection, empty DB, unusual legacy data, rollba
     assert.equal(rows(db, 'SELECT COUNT(*) c FROM services')[0].c, 0);
     assert.equal(rows(db, 'SELECT COUNT(*) c FROM tasks')[0].c, 1);
     assert.ok(fs.readdirSync(dir).some((f) => /^pre-v4-migration/.test(f)));
-    assert.equal(JSON.parse(openWithNewCode(db)).v, 10, 'a clean retry succeeds (v3 -> v4 -> v5 -> v6 -> v7)');
+    assert.equal(JSON.parse(openWithNewCode(db)).v, 11, 'a clean retry succeeds (v3 -> v4 -> v5 -> v6 -> v7)');
   });
   it('empty v3 database migrates; brand-new database is created at v5', () => {
     const db = path.join(dir, 'empty.db'); oldDb(old, db);
     assert.equal(rows(db, 'SELECT user_version v FROM pragma_user_version')[0].v, 3);
-    assert.equal(JSON.parse(openWithNewCode(db)).v, 10);
+    assert.equal(JSON.parse(openWithNewCode(db)).v, 11);
     assert.equal(rows(db, 'SELECT COUNT(*) c FROM projects')[0].c, 0);
     assert.ok(fs.readdirSync(dir).filter((f) => /^pre-v4-migration/.test(f)).length >= 1, 'backup is taken even when empty');
     const fresh = path.join(dir, 'fresh', 'o.db');
     fs.mkdirSync(path.dirname(fresh));
     const seedRoot = path.join(dir, 'seed-root'); fs.mkdirSync(seedRoot);                 // hermetic: do not depend on ~/work existing (a fresh clone on a new machine has none)
-    assert.equal(JSON.parse(openWithNewCode(fresh, { ORCH_AUTHORIZED_ROOTS: seedRoot })).v, 10);
+    assert.equal(JSON.parse(openWithNewCode(fresh, { ORCH_AUTHORIZED_ROOTS: seedRoot })).v, 11);
     assert.equal(rows(fresh, 'SELECT COUNT(*) c FROM authorized_roots')[0].c, 1);
     assert.equal(fs.readdirSync(path.dirname(fresh)).filter((f) => /^pre-v[45]/.test(f)).length, 0, 'no backup for a brand-new DB');
   });
@@ -144,7 +144,7 @@ describe('M3 migration: failure injection, empty DB, unusual legacy data, rollba
     w.exec("INSERT INTO services (project_id, name, path) VALUES (1, 'api', 'api'), (1, 'web', 'web')");
     w.exec("INSERT INTO tasks (project_id, title, prompt) VALUES (1,'a','a'), (2,'b','b'), (3,'c','c'), (4,'d','d')");
     w.close();
-    assert.equal(JSON.parse(openWithNewCode(db)).v, 10);
+    assert.equal(JSON.parse(openWithNewCode(db)).v, 11);
     const svc = rows(db, 'SELECT s.id, p.name pname, s.name, s.path, s.status, s.archived, s.local_path, s.origin FROM services s JOIN projects p ON p.id = s.project_id ORDER BY s.id');
     const by = (p, n) => svc.find((s) => s.pname === p && s.name === n);
     assert.equal(by('ok', 'ok').status, 'active');
@@ -225,7 +225,7 @@ describe('M1 migration v4 -> v5 (usage attribution + chat/feature structures + m
     const db = makeV4('a.db'); const before = counts(db);
     const snap = (t, cols) => JSON.stringify(rows(db, `SELECT ${cols} FROM ${t} ORDER BY 1`));
     const keep = { tasks: snap('tasks', 'id, project_id, service_id, title, status, engine, group_id, step_no'), roles: snap('model_roles', 'role, model, options'), events: snap('task_events', 'id, task_id, message') };
-    assert.equal(JSON.parse(openWithNewCode(db)).v, 10);
+    assert.equal(JSON.parse(openWithNewCode(db)).v, 11);
     assert.deepEqual(counts(db), before, 'every row survives');
     assert.deepEqual(keep, { tasks: snap('tasks', 'id, project_id, service_id, title, status, engine, group_id, step_no'), roles: snap('model_roles', 'role, model, options'), events: snap('task_events', 'id, task_id, message') });
     // usage attribution
@@ -272,7 +272,7 @@ describe('M1 migration v4 -> v5 (usage attribution + chat/feature structures + m
   it('idempotent: re-opening changes nothing and writes no second v5 backup', () => {
     const db = path.join(dir, 'a.db'); const before = counts(db);
     const sql = rows(db, "SELECT name, sql FROM sqlite_master WHERE type IN ('table','index') ORDER BY name");
-    assert.equal(JSON.parse(openWithNewCode(db)).v, 10);
+    assert.equal(JSON.parse(openWithNewCode(db)).v, 11);
     assert.deepEqual(counts(db), before);
     assert.deepEqual(rows(db, "SELECT name, sql FROM sqlite_master WHERE type IN ('table','index') ORDER BY name"), sql);
     assert.equal(fs.readdirSync(dir).filter((f) => f.startsWith('pre-v5-migration-')).length, 1);
@@ -290,13 +290,13 @@ describe('M1 migration v4 -> v5 (usage attribution + chat/feature structures + m
     assert.throws(() => w.exec("INSERT INTO model_roles (role, model) VALUES ('chat','m')"), /CHECK/, 'model_roles still has the v4 CHECK');
     w.close();
     assert.ok(fs.readdirSync(dir).some((f) => f.startsWith('pre-v5-migration-') && rows(path.join(dir, f), 'SELECT COUNT(*) c FROM tasks')[0].c === 3), 'a backup was written before the failed attempt');
-    assert.equal(JSON.parse(openWithNewCode(db)).v, 10);
+    assert.equal(JSON.parse(openWithNewCode(db)).v, 11);
     assert.deepEqual(counts(db), before);
     assert.equal(rows(db, 'SELECT project_id FROM cursor_usage WHERE id = 1')[0].project_id, 1);
   });
   it('brand-new database is created directly at v5 with every structure and no backup', () => {
     const fresh = path.join(dir, 'fresh5', 'o.db'); fs.mkdirSync(path.dirname(fresh));
-    assert.equal(JSON.parse(openWithNewCode(fresh)).v, 10);
+    assert.equal(JSON.parse(openWithNewCode(fresh)).v, 11);
     for (const t of ['chat_conversations', 'chat_messages', 'features', 'task_artifacts', 'model_roles']) assert.equal(rows(fresh, `SELECT COUNT(*) c FROM sqlite_master WHERE name='${t}'`)[0].c, 1, t);
     assert.match(rows(fresh, "SELECT sql FROM sqlite_master WHERE name='model_roles'")[0].sql, /'chat'.*'embedding'|'embedding'/s);
     assert.equal(rows(fresh, "SELECT COUNT(*) c FROM pragma_table_info('task_groups') WHERE name IN ('feature_id','gate')")[0].c, 2);
@@ -335,7 +335,7 @@ describe('M1 migration v4 -> v5 (usage attribution + chat/feature structures + m
     const boot = (dbPath) => spawn(process.execPath, ['--no-warnings', 'server.js'], { cwd: old4, env: { ...process.env, ORCH_PORT: String(port), ORCH_DB: dbPath, ORCH_LOG_DIR: path.join(dbDir, 'logs'), ORCH_WORKTREES: path.join(dbDir, 'wt'), ORCH_POLL_MS: '100000' }, stdio: ['ignore', 'pipe', 'pipe'] });
     let c = boot(db); let log = ''; c.stderr.on('data', (d) => (log += d)); c.stdout.on('data', (d) => (log += d));
     await new Promise((r) => c.on('exit', r));
-    assert.match(log, /schema v10 is newer than this orchestrator \(v4\)/);
+    assert.match(log, /schema v11 is newer than this orchestrator \(v4\)/);
     const restored = path.join(dbDir, 'restored.db'); fs.copyFileSync(backup, restored);
     c = boot(restored); log = ''; c.stdout.on('data', (d) => (log += d)); c.stderr.on('data', (d) => (log += d));
     let health = null;

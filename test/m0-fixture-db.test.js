@@ -30,7 +30,7 @@ describe('M0 fixture DB (copy of the clean-slate backup)', { skip: HAVE ? false 
       const s = require('./lib/db'); const c = (t) => s.db.prepare('SELECT COUNT(*) c FROM '+t).get().c;
       console.log(JSON.stringify({ v: s.schemaVersion(), projects: c('projects'), services: c('services'), tasks: c('tasks'), approvals: c('approvals'), events: c('task_events'), usage: c('cursor_usage'),
         fk: s.db.prepare('PRAGMA foreign_key_check').all().length, groups: c('task_groups') }));`));
-    assert.equal(out.v, 10, "fixture (v3) is migrated to the current schema");
+    assert.equal(out.v, 11, "fixture (v3) is migrated to the current schema");
     assert.deepEqual({ projects: out.projects, tasks: out.tasks, approvals: out.approvals, events: out.events, usage: out.usage, fk: out.fk }, { projects: 3, tasks: 6, approvals: 8, events: 210, usage: 1, fk: 0 });
     assert.ok(out.services >= 1);
   });
