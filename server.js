@@ -66,9 +66,8 @@ function validateTask(b) {
   if (!title || title.length > 200) return { error: 'title required (max 200 chars)' };
   if (!prompt || prompt.length > 20000) return { error: 'prompt required (max 20000 chars)' };
   let files = b.files ?? [];
-  if (typeof files === 'string') files = files.split(/[\n,]+/);
-  if (!Array.isArray(files)) return { error: 'files must be an array or comma/newline separated string' };
-  files = [...new Set(files.map((f) => String(f).trim()).filter(Boolean))];
+  if (typeof files !== 'string' && !Array.isArray(files)) return { error: 'files must be an array or comma/semicolon/newline separated string' };
+  files = require('./lib/file-list').cleanFileList(files);
   if (files.length > 20) return { error: 'too many files (max 20)' };
   for (const f of files) {
     const n = path.posix.normalize(f);
