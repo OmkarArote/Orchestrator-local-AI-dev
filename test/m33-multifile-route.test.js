@@ -55,19 +55,44 @@ describe('M33 multi-file routing', () => {
     } finally { await S.stop(); }
   });
 
-  it('v2 does not start aider and routes to the Cursor planner with reason files', async () => {
+  it('v2 keeps a 2-file prompt local (no Cursor planner); ORCH_V2_LOCAL_FAILS_BEFORE_CURSOR=0 restores the Cursor planner', async () => {
     const { S, P } = await boot('v2');
     try {
       const n = aiderCount(S);
       const t = await S.runToReview(P.id, { title: 'v2', prompt, engine: 'auto', allow_escalation: true }, 'review');
       const events = await evs(S, t.id);
-      assert.equal(aiderCount(S), n);
-      assert.match(cursorLog(S), /mode=plan/);
-      assert.match(cursorLog(S), /mode=force/);
-      assert.ok(events.some((e) => e.kind === 'route' && /route files:/.test(e.message)));
-      assert.equal(events.some((e) => e.kind === 'status' && /awaiting_approval|awaiting_plan|awaiting_escalation/.test(e.message)), false);
-      assert.ok(t.plan_text);
+      assert.ok(aiderCount(S) > n, 'aider ran');
+      assert.doesNotMatch(cursorLog(S), /mode=force/, 'no Cursor edit run (the stub Ollama gives no plan JSON, so only the plan falls back after the local retry)');
+      assert.ok(events.some((e) => e.kind === 'route' && /route local: 2 file\(s\) fit one local pass/.test(e.message)));
       assert.equal(t.status, 'review');
+    } finally { await S.stop(); }
+    const S2 = await startServer({ env: { ORCH_FLOW: 'v2', ORCH_V2_LOCAL_FAILS_BEFORE_CURSOR: '0' } });
+    try {
+      const P2 = await S2.addProject(makeRepo(path.join(S2.work, 'm33b'), { 'src/a.js': 'a\n', 'lib/b.js': 'b\n' }), 'm33b', 'true');
+      const n = aiderCount(S2);
+      const t = await S2.runToReview(P2.id, { title: 'v2', prompt, engine: 'auto', allow_escalation: true }, 'review');
+      const events = await evs(S2, t.id);
+      assert.equal(aiderCount(S2), n);
+      assert.match(cursorLog(S2), /mode=plan/);
+      assert.ok(events.some((e) => e.kind === 'route' && /route files:/.test(e.message)));
+      assert.ok(t.plan_text);
+    } finally { await S2.stop(); }
+  });
+
+  it('v2 splits a prompt naming more than 3 files into a pending stacked sequence and runs nothing', async () => {
+    const S = await startServer({ env: { ORCH_FLOW: 'v2' } });
+    try {
+      const files = { 'src/a.js': 'a\n', 'src/b.js': 'b\n', 'lib/c.js': 'c\n', 'lib/d.js': 'd\n' };
+      const P = await S.addProject(makeRepo(path.join(S.work, 'm33c'), files), 'm33c', 'true');
+      const n = aiderCount(S);
+      const t = await S.runToReview(P.id, { title: 'big', prompt: 'edit src/a.js, src/b.js, lib/c.js and lib/d.js', engine: 'auto', allow_escalation: true }, 'failed');
+      assert.equal(aiderCount(S), n, 'aider never started');
+      assert.doesNotMatch(cursorLog(S), /mode=/);
+      assert.match(t.result_summary, /^split into sequence #\d+: #\d+, #\d+/);
+      const parts = (await S.get('/tasks')).filter((x) => /big - part \d\/2/.test(x.title));
+      assert.equal(parts.length, 2);
+      for (const p of parts) { assert.equal(p.status, 'pending'); assert.ok(p.files.length <= 3); assert.ok(p.group_id); }
+      assert.deepEqual(parts.flatMap((p) => p.files).sort(), Object.keys(files).sort());
     } finally { await S.stop(); }
   });
 
