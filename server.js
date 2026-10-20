@@ -805,6 +805,11 @@ async function api(req, res, url) {
       store.addEvent(id, 'system', `re-run requested by human: new task #${nid}`);
       return sendJson(res, 201, store.getTask(nid));
     }
+    case 'follow-up': {
+      const r = require('./lib/flow/follow-up').request(task, body.instruction);
+      if (!r.ok) return fail(res, r.status || 409, r.message);
+      return sendJson(res, 200, { ...store.getTask(id), follow_up: r });
+    }
     case 'merge-to': {
       const envMerge = require('./lib/flow/env-merge');
       const r = await envMerge.mergeTo(task, String(body.role || ''), { confirm: body.confirm === true, source: body.source, target: body.target });

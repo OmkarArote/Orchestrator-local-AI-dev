@@ -284,6 +284,18 @@ async function renderDetail(pane, id, { stream, tab: startTab }) {
       } }));
     }
     kids.push(row);
+    if (['review', 'done'].includes(t.status) && !sup) {
+      const ta = el('textarea', { placeholder: 'Describe the change. It runs on this same branch and comes back to review.', rows: 3 });
+      kids.push(el('div', { className: 'stack' }, el('b', {}, 'Request changes'), ta, el('button', { className: 'btn sec', textContent: 'Request changes', onclick: async (e) => {
+        const instruction = ta.value.trim();
+        if (!instruction) { toast('Write the change first', 'bad'); return; }
+        try {
+          await busy(e.currentTarget, async () => { await api(`/tasks/${t.id}/follow-up`, { instruction }); });
+          toast(`Follow-up started on ${t.branch}`, 'ok');
+          await loadTasks(); draw(true);
+        } catch (er) { toastError(er); }
+      } })));
+    }
     clear(head, ...kids);
   }
   draw(true);
