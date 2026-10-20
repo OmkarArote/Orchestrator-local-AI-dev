@@ -6,8 +6,10 @@ import { S, loadTasks, loadMem, loadServices, loadProjects, project, projName, a
 import { lineageCard } from './lineage.js';
 
 const isCloud = (t) => t.engine !== 'local';
-const FILTERS = [['all', 'All'], ['active', 'Active'], ['review', 'Review'], ['done', 'Done'], ['failed', 'Failed']];
-const matches = (t, f) => f === 'all' || (f === 'active' && ACTIVE_STATUSES.includes(t.status)) || (f === 'review' && t.status === 'review') || (f === 'done' && t.status === 'done') || (f === 'failed' && ['failed', 'rejected'].includes(t.status));
+const FILTERS = [['all', 'All'], ['active', 'Active'], ['review', 'Review'], ['done', 'Done'], ['failed', 'Failed'], ['split', 'Split']];
+// a split parent (display_status 'split') is not a failure
+const shown = (t) => t.display_status || t.status;
+const matches = (t, f) => f === 'all' || (f === 'active' && ACTIVE_STATUSES.includes(t.status)) || (f === 'review' && t.status === 'review') || (f === 'done' && t.status === 'done') || (f === 'failed' && ['failed', 'rejected'].includes(shown(t))) || (f === 'split' && shown(t) === 'split');
 
 export function taskBadges(t) {
   const out = [t.engine === 'cursor' ? el('span', { className: 'badge e-cursor nodot ico' }, icon('cloud'), ' CURSOR') : badge(t.engine === 'local' ? 'LOCAL' : 'AUTO', `e-${t.engine} nodot`)];
@@ -208,7 +210,7 @@ async function renderDetail(pane, id, { stream, tab: startTab }) {
     const svcPath = t.service_id ? ((S.svc[t.project_id] || []).find((x) => x.id === t.service_id) || {}).path : null;
     const kids = [
       el('div', { className: 'crumbs' }, el('a', { href: '#/tasks' }, 'Tasks'), ' / ', el('a', { href: `#/projects/${t.project_id}/services` }, t.project_name || projName(t.project_id))),
-      el('div', { className: 'row' }, el('h2', {}, `#${t.id} ${t.title}`), statusBadge(t.status)),
+      el('div', { className: 'row' }, el('h2', {}, `#${t.id} ${t.title}`), statusBadge(shown(t))),
       el('div', { className: 'row' }, ...taskBadges(t), isCloud(t) ? badge('runs on Cursor servers (uses Pro usage)', 'cloud') : badge(`local: aider + ollama on this Mac${S.cfg ? ' (' + S.cfg.local_model + ')' : ''}`, 'e-local nodot'),
         t.engine_used ? chip('engine used: ' + t.engine_used) : null, t.allow_escalation ? chip('escalation allowed') : null, t.ai_review ? chip(`AI review (${t.review_model || 'auto'})`) : null),
       el('pre', { className: 'plain' }, t.prompt),
@@ -331,7 +333,7 @@ export async function render(main, route) {
     const rows = S.tasks.filter((t) => (!S.filter.project || String(t.project_id) === S.filter.project) && matches(t, filter));
     if (!rows.length) { clear(list, S.tasks.length === 0 ? empty({ icon: 'list', title: 'No tasks yet', text: 'Create a task: describe a change, pick a service and an engine. You approve before anything runs.', action: el('button', { className: 'btn', textContent: '+ New task', onclick: () => newTaskModal() }) }) : empty({ icon: 'search', title: 'Nothing here', text: 'No task matches this filter.' })); return; }
     clear(list, ...rows.map((t) => el('a', { href: `#/tasks/${t.id}${stream ? '' : '?nostream=1'}`, style: { color: 'inherit', textDecoration: 'none' } }, el('div', { className: `card hover task-row${t.id === id ? ' sel' : ''}` },
-      el('span', { className: 'num' }, `#${t.id}`), el('div', { style: { minWidth: 0, flex: 1 } }, el('div', { className: 't ellipsis', title: t.title }, t.title), el('div', { className: 'sub' }, chip(t.project_name || projName(t.project_id)), ...taskBadges(t))), statusBadge(t.status)))));
+      el('span', { className: 'num' }, `#${t.id}`), el('div', { style: { minWidth: 0, flex: 1 } }, el('div', { className: 't ellipsis', title: t.title }, t.title), el('div', { className: 'sub' }, chip(t.project_name || projName(t.project_id)), ...taskBadges(t))), statusBadge(shown(t))))));
   }
   drawSeg(); drawList();
   const unsubList = (() => { const iv = setInterval(drawList, 2500); return () => clearInterval(iv); })();

@@ -82,7 +82,7 @@ const emptyUsage = () => ({ tasks: 0, runs: 0, plans: 0, reviews: 0, sessions: 0
 function groupCard(g, redo) {
   const c = el('div', { className: 'card' }, el('div', { className: 'head' }, el('h3', {}, `#${g.id} ${g.title}`), badge(g.dependency, 'nodot'), g.steps.every((s) => s.status === 'done') ? badge('complete', 's-done') : null));
   const tl = el('div', { className: 'stack' });
-  for (const s of g.steps) tl.append(el('div', { className: 'row' }, el('span', { className: 'chip mono' }, `${s.step_no}`), statusBadge(s.status), el('a', { href: `#/tasks/${s.id}`, textContent: `#${s.id} ${s.title}` }), chip(s.service_name || 'no service'), chip(s.engine), s.supervised ? badge('SUPERVISED', 's-awaiting_escalation') : null));
+  for (const s of g.steps) tl.append(el('div', { className: 'row' }, el('span', { className: 'chip mono' }, `${s.step_no}`), statusBadge(s.display_status || s.status), el('a', { href: `#/tasks/${s.id}`, textContent: `#${s.id} ${s.title}` }), chip(s.service_name || 'no service'), chip(s.engine), s.supervised ? badge('SUPERVISED', 's-awaiting_escalation') : null));
   c.append(tl);
   const pending = g.steps.some((s) => s.status === 'pending');
   const row = el('div', { className: 'row mt' });

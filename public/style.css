@@ -82,6 +82,7 @@ input[type=checkbox], input[type=radio] { width: auto; accent-color: var(--acc);
 .s-running::before, .s-checking::before { animation: pulse 1.2s infinite; } @keyframes pulse { 50% { opacity: .2; } }
 .s-awaiting_escalation { background: var(--cloud-soft); color: var(--cloud); } .s-awaiting_plan { background: var(--cyan-soft); color: var(--cyan); }
 .s-review { background: var(--purple-soft); color: var(--purple); } .s-done, .s-ok, .s-ready, .s-merged { background: var(--ok-soft); color: var(--ok); }
+.s-split { background: var(--surface-2); color: var(--accent, var(--dim)); }
 .s-failed, .s-rejected, .s-blocked, .s-unauthorized, .s-missing, .s-cancelled { background: var(--bad-soft); color: var(--bad); } .s-archived { background: var(--surface-2); color: var(--dim); }
 .e-local { background: var(--ok-soft); color: var(--ok); } .e-cursor { background: var(--cloud-soft); color: var(--cloud); } .e-auto { background: var(--warn-soft); color: var(--warn); }
 .cloud { background: var(--cloud-soft); color: var(--cloud); } .t-ok { color: var(--ok); } .t-bad { color: var(--bad); } .t-warn { color: var(--warn); }
