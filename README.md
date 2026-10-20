@@ -55,7 +55,7 @@ Localhost-only (Host/Origin checks, no auth, so do not expose the port), authori
 ### Development
 
 ```bash
-npm test            # 566 tests on the author machine (566 pass, 0 fail, 0 skipped); fresh-clone/CI count is recorded after the pull-request run (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
+npm test            # 567 tests on the author machine (567 pass, 0 fail, 0 skipped); fresh-clone/CI count is recorded after the pull-request run (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
 npm run doctor      # same as ./setup.sh
 ```
 
@@ -314,6 +314,7 @@ Plain ES modules in `public/` (`index.html`, `style.css`, `app.js`, `js/*.js`), 
 * The project page has an **Index** tab. A v2 task rebuilds the structural index (no summary call) when it is missing or stale.
 * When the prompt has no `## Files` section and no pinned file list, `lib/flow/rank.js` picks the edit list from that index: symbol and path matches, folder-summary overlap, and import-graph neighbours as read-only snippets. A name introduced as a new enum is proposed beside an existing `*.enum.ts`. An explicit Files section still wins. The coder step keeps `--map-tokens 0` and only the chosen files. Snippets stop at about 60% of the local context (`lib/flow/reader.js`).
 * A rebuild also stores embeddings in `index_embeddings` when `nomic-embed-text` is already installed (`ORCH_INDEX_EMBED=0` skips this; `ORCH_INDEX_EMBED_MODEL` changes the model name). They are an extra ranking signal only. A task refresh does not embed, and ranking still works when the model is missing or the embed call fails. `lib/ollama.js` is the only module that calls Ollama (`POST /api/embed`).
+* `bin/index-mcp.js` is a read-only stdio MCP server (`lib/index/mcp.js`) for one service. Set `ORCH_DB` and `ORCH_MCP_SERVICE_ID`. Tools: `search`, `get_file_summary`, `get_symbols`, `get_neighbours`. It does not rebuild the index and it does not call a model.
 
 ## Upgrading the schema (v4, v5, v6, v7, v8, v9), backups and rollback
 
@@ -424,6 +425,7 @@ The dashboard shows engine + model per task and a clear badge: **local** (green,
 | `ORCH_SPLIT_AUTORUN` | on | v2 split sequences: the parent's one start approval runs every part in order. A part that fails stops the rest as `blocked`; a cancel stops the rest as `cancelled`. The parent result shows `done/total`. `0` leaves each part pending |
 | `ORCH_INDEX_EMBED` | on | store embeddings on an index rebuild when `ORCH_INDEX_EMBED_MODEL` is already installed. `0` skips them. Ranking does not need them |
 | `ORCH_INDEX_EMBED_MODEL` | `nomic-embed-text` | Ollama embedding model used by the project index |
+| `ORCH_MCP_SERVICE_ID` |  | service id for `bin/index-mcp.js`, together with `ORCH_DB`. The process is read-only |
 | `ORCH_LOCAL_MAP_TOKENS` / `ORCH_LOCAL_MAP_TOKENS_WITH_FILES` | `1024` / `512` | aider repo-map size without / with pinned files (was `0` = no map) |
 | `ORCH_AIDER_THINK` | `0` | `1` = let aider use the model's default thinking; by default aider gets `think: false` (model-settings file) for thinking-capable local models |
 | `ORCH_AIDER_EDIT_FORMAT` | unset (`diff`) | `whole`, `diff`, `udiff`, or `diff-fenced`. Unset or `diff` uses `whole` when a pinned file is missing or under 4096 bytes. Any other value refuses the local run |
