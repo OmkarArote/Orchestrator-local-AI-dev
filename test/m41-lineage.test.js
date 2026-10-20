@@ -38,6 +38,26 @@ describe('M41 lineage builder', () => {
     assert.deepEqual(step.children.filter((n) => n.kind === 'escalation').map((n) => n.model || n.engine), ['qwen3.5:9b', 'cursor']);
   });
 
+  it('places a rolled-back merge, and the escalation models, where the timeline can read them', () => {
+    const tree = buildLineage({
+      task: { id: 9, status: 'review', title: 't' },
+      events: [
+        ev('attempt', JSON.stringify({ phase: 'attempt', file: 'a.txt', engine: 'local', model: 'ornith:9b', status: 'failed' })),
+        ev('escalation', JSON.stringify({ phase: 'escalation', to: 'local2', model: 'qwen3.5:9b', file: 'a.txt', status: 'running' })),
+        ev('escalation', JSON.stringify({ phase: 'escalation', to: 'cursor', file: 'a.txt', status: 'ok' })),
+        ev('merge', JSON.stringify({ phase: 'merge', status: 'merge_rolled_back', role: 'dev', target: 'dev', cursor_task_id: 12, target_sha: 'abc1234' })),
+      ],
+    });
+    const plan = tree.tree.children[0];
+    const step = plan.children.find((n) => n.kind === 'step');
+    assert.deepEqual(step.children.map((n) => n.model || n.engine), ['ornith:9b', 'qwen3.5:9b', 'cursor']);
+    const merge = plan.children.find((n) => n.kind === 'merge');
+    assert.equal(merge.status, 'merge_rolled_back');
+    assert.equal(merge.reason, 'cursor #12');
+    assert.equal(merge.sha, 'abc1234');
+    assert.equal(merge.engine, 'dev');
+  });
+
   it('labels the source events+plan when a plan row is passed, without reading a new table', () => {
     const tree = buildLineage({ task: { id: 1, status: 'review', title: 't' }, events: [], plan: { steps: [{ file: 'a.js' }], engine: 'local', model: 'ornith:9b' } });
     assert.equal(tree.source, 'events+plan');

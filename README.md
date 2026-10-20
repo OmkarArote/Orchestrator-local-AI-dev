@@ -67,7 +67,7 @@ Unset `ORCH_FLOW` stays on v1. v1 logs a warning for a multi-file prompt and kee
 
 The local fallback order is `ornith:9b`, then `qwen3.5:9b` when that model is already installed, then Cursor (`ORCH_V2_LOCAL_MODELS`). Nothing is downloaded. After `ORCH_V2_CURSOR_RUNS` Cursor runs in one task (default 3), the task fails with reason `budget`.
 
-`bin/orc.js` is an HTTP client (`package.json` `bin.orc`). It does not open the database. `orc do` waits until the task is `review` or `failed`. `orc review <id>` prints the task plus `GET /api/tasks/:id/lineage`. The lineage tree (plan, steps, attempts, repairs, escalations, each with reason, status, duration, check, and commit) is also on the task page. Until schema v7 it is built from `task_events` only. Schema v7 is not applied on this branch.
+`bin/orc.js` is an HTTP client (`package.json` `bin.orc`). It does not open the database. `orc do` waits until the task is `review` or `failed`. `orc review <id>` prints the task plus `GET /api/tasks/:id/lineage`. The task page shows that lineage as a vertical timeline (plan, step, attempt, repair, escalation, merge), with an engine badge, status, duration, and the escalation chain on the step. It refreshes while the task is approved, running, or checking. The timeline is built from `task_events`.
 
 ```bash
 ORCH_FLOW=v2 ORCH_PORT=4311 ORCH_DB=/tmp/v2.db node server.js

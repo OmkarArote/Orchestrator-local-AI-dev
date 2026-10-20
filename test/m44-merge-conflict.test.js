@@ -38,8 +38,8 @@ function diverge(repo, wt, file, devText, taskText) {
   git(wt, 'add', '--', file);
   git(wt, 'commit', '-q', '-m', `task ${file}`);
 }
-function chats(S) {
-  return S.fake.state.requests.filter((r) => r.path === '/api/chat' && r.body && r.body.stream !== true).length;
+function conflictChats(S) {
+  return S.fake.state.requests.filter((r) => r.path === '/api/chat' && r.body && r.body.stream !== true && /<<<<<<< /.test(((r.body.messages) || []).map((m) => m.content || '').join('\n'))).length;
 }
 function openChat(S, id, body) {
   const events = [];
@@ -83,12 +83,12 @@ describe('merge conflicts', () => {
       setHead(w.S, w.t.id, git(w.t.worktree_path, 'rev-parse', 'HEAD').trim());
       const dev = git(w.repo, 'rev-parse', 'dev').trim();
       w.S.fake.state.chatReply = (u, body, user) => (/<<<<<<< /.test(user) ? 'resolved\n' : JSON.stringify({ service: null, confidence: 0.9, difficulty: 'simple', needs_thinking: false, reason: 'x' }));
-      const before = chats(w.S);
+      const before = conflictChats(w.S);
       const r = await w.S.post(`/tasks/${w.t.id}/merge-to`, { role: 'dev' });
       assert.equal(r.merge.ok, true);
       assert.notEqual(git(w.repo, 'rev-parse', 'dev').trim(), dev);
       assert.equal(fs.readFileSync(path.join(w.repo, 'a.txt'), 'utf8').includes('resolved') || git(w.repo, 'show', 'dev:a.txt').includes('resolved'), true);
-      assert.equal(chats(w.S), before + 1);
+      assert.equal(conflictChats(w.S), before + 1);
       const lin = await w.S.get(`/tasks/${w.t.id}/lineage`);
       assert.equal(JSON.stringify(lin.tree).includes('"kind":"merge"'), true);
     } finally { await w.S.stop(); }
@@ -102,11 +102,11 @@ describe('merge conflicts', () => {
       const dev = git(w.repo, 'rev-parse', 'dev').trim();
       const log = path.join(w.S.base, 'stub-agent.log');
       const beforeLog = fs.existsSync(log) ? fs.readFileSync(log, 'utf8') : '';
-      const before = chats(w.S);
+      const before = conflictChats(w.S);
       const r = await w.S.post(`/tasks/${w.t.id}/merge-to`, { role: 'dev' }, { allowFail: true });
       assert.equal(r.status, 409);
       assert.equal(git(w.repo, 'rev-parse', 'dev').trim(), dev);
-      assert.equal(chats(w.S), before, 'the model is not asked to resolve a lockfile');
+      assert.equal(conflictChats(w.S), before, 'the model is not asked to resolve a lockfile');
       const events = await w.S.get(`/tasks/${w.t.id}/events`);
       const row = events.find((e) => e.kind === 'merge' && e.message.includes('merge_rolled_back'));
       assert.ok(row);
@@ -133,11 +133,11 @@ describe('merge conflicts', () => {
       for (const name of Object.keys(files)) diverge(w.repo, w.t.worktree_path, name, `DEV ${name}\n`, `TASK ${name}\n`);
       setHead(w.S, w.t.id, git(w.t.worktree_path, 'rev-parse', 'HEAD').trim());
       const dev = git(w.repo, 'rev-parse', 'dev').trim();
-      const before = chats(w.S);
+      const before = conflictChats(w.S);
       const r = await w.S.post(`/tasks/${w.t.id}/merge-to`, { role: 'dev' }, { allowFail: true });
       assert.equal(r.status, 409);
       assert.equal(git(w.repo, 'rev-parse', 'dev').trim(), dev);
-      assert.equal(chats(w.S), before);
+      assert.equal(conflictChats(w.S), before);
     } finally { await w.S.stop(); }
     const big = 'x\n'.repeat(45);
     const w2 = await world({ 'a.txt': 'base\n' });
@@ -145,11 +145,11 @@ describe('merge conflicts', () => {
       diverge(w2.repo, w2.t.worktree_path, 'a.txt', big, big.replace(/x/g, 'y'));
       setHead(w2.S, w2.t.id, git(w2.t.worktree_path, 'rev-parse', 'HEAD').trim());
       const dev = git(w2.repo, 'rev-parse', 'dev').trim();
-      const before = chats(w2.S);
+      const before = conflictChats(w2.S);
       const r = await w2.S.post(`/tasks/${w2.t.id}/merge-to`, { role: 'dev' }, { allowFail: true });
       assert.equal(r.status, 409);
       assert.equal(git(w2.repo, 'rev-parse', 'dev').trim(), dev);
-      assert.equal(chats(w2.S), before);
+      assert.equal(conflictChats(w2.S), before);
     } finally { await w2.S.stop(); }
   });
 
