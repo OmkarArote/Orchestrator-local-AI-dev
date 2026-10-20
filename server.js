@@ -161,7 +161,7 @@ function stream(req, res, task) {
     Connection: 'keep-alive', 'X-Accel-Buffering': 'no',
   });
   let last = Number(req.headers['last-event-id']) || Number(new URL(req.url, 'http://x').searchParams.get('after')) || 0;
-  let lastStatus = null, closed = false;
+  let lastStatus = null, lastSummary = null, closed = false;
   res.write('retry: 2000\n\n');
   const push = () => {
     if (closed) return;
@@ -172,7 +172,10 @@ function stream(req, res, task) {
         if (rows.length < 500) break;
       }
       const t = store.getTask(task.id);
-      if (t && t.status !== lastStatus) { lastStatus = t.status; res.write(`event: status\ndata: ${JSON.stringify({ status: t.status, result_summary: t.result_summary })}\n\n`); }
+      if (t && (t.status !== lastStatus || t.result_summary !== lastSummary)) {
+        lastStatus = t.status; lastSummary = t.result_summary;
+        res.write(`event: status\ndata: ${JSON.stringify({ status: t.status, result_summary: t.result_summary })}\n\n`);
+      }
     } catch { /* connection gone */ }
   };
   push();
@@ -471,7 +474,7 @@ const groupView = (g) => {
   const tasks = store.groupTasks(g.id);
   const keys = new Set(tasks.map((t) => { const sv = t.service_id ? store.getService(t.service_id) : null; return sv ? (repo.repoKeyOf(sv) || `svc:${sv.id}`) : 'none'; }));
   return { ...g, project_name: (store.getProject(g.project_id) || {}).name, repo_count: keys.size, cross_repo: keys.size > 1, steps: tasks.map((t) => ({
-    id: t.id, step_no: t.step_no, title: t.title, status: t.status, service_id: t.service_id, service_name: t.service_name, engine: t.engine, branch: t.branch,
+    id: t.id, step_no: t.step_no, title: t.title, status: t.status, display_status: t.display_status, service_id: t.service_id, service_name: t.service_name, engine: t.engine, branch: t.branch,
     base_ref: t.base_ref, supervised: t.supervised, result_summary: t.result_summary, plan_first: t.plan_first, ai_review: t.ai_review, cursor_runs_on_start: cursorRunsOnStart(t) })),
     cursor_runs_pending: tasks.filter((t) => t.status === 'pending').reduce((n, t) => n + cursorRunsOnStart(t), 0) };
 };

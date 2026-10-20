@@ -89,7 +89,7 @@ describe('M52 v2 server runs', () => {
   });
 
   it('a split parent shows as split (not failed) in the task view, filter data and lineage', async () => {
-    const S = await startServer({ env: { ORCH_FLOW: 'v2' } });
+    const S = await startServer({ env: { ORCH_FLOW: 'v2', ORCH_SPLIT_AUTORUN: '0' } });
     try {
       const files = { 'src/a/one.ts': '1\n', 'src/a/two.ts': '2\n', 'src/b/three.ts': '3\n', 'src/b/four.ts': '4\n' };
       const P = await S.addProject(makeRepo(path.join(S.work, 'm52b'), files), 'm52b', 'true');

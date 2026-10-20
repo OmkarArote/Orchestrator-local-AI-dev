@@ -113,6 +113,8 @@ module.exports = {
   V2_LOCAL_MODELS: (env.ORCH_V2_LOCAL_MODELS !== undefined && env.ORCH_V2_LOCAL_MODELS !== '' ? env.ORCH_V2_LOCAL_MODELS : 'ornith:9b,qwen2.5-coder:7b').split(',').map((s) => s.trim()).filter(Boolean),
   // Cursor is only reached after this many failed local attempts on a step (soft reasons such as files/diff_size no longer jump straight to Cursor)
   V2_LOCAL_FAILS_BEFORE_CURSOR: boundedInt('ORCH_V2_LOCAL_FAILS_BEFORE_CURSOR', env.ORCH_V2_LOCAL_FAILS_BEFORE_CURSOR, 2, 0, 10),
+  // v2 split sequences: the parent's one start approval runs every part in order. 0 = each part stays pending.
+  SPLIT_AUTORUN: env.ORCH_SPLIT_AUTORUN !== '0',
   // hard timeouts (ms) for every subprocess
   AIDER_TIMEOUT_MS: num(env.ORCH_AIDER_TIMEOUT_MS, 20 * 60 * 1000),
   INSTALL_TIMEOUT_MS: num(env.ORCH_INSTALL_TIMEOUT_MS, 10 * 60 * 1000),

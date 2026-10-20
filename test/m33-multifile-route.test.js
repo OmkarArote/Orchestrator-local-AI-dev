@@ -80,7 +80,7 @@ describe('M33 multi-file routing', () => {
   });
 
   it('v2 splits a prompt naming more than 3 files into a pending stacked sequence and runs nothing', async () => {
-    const S = await startServer({ env: { ORCH_FLOW: 'v2' } });
+    const S = await startServer({ env: { ORCH_FLOW: 'v2', ORCH_SPLIT_AUTORUN: '0' } });
     try {
       const files = { 'src/a.js': 'a\n', 'src/b.js': 'b\n', 'lib/c.js': 'c\n', 'lib/d.js': 'd\n' };
       const P = await S.addProject(makeRepo(path.join(S.work, 'm33c'), files), 'm33c', 'true');
