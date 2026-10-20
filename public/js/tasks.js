@@ -197,7 +197,7 @@ async function renderDetail(pane, id, { stream, tab: startTab }) {
   async function loadDiff() { clear(diffHost, skeletonLines(5)); try { renderDiff(diffHost, await api(`/tasks/${id}/diff`)); } catch (e) { clear(diffHost, el('div', { className: 'callout bad' }, e.message)); } }
   let attInfo = null;
   const mpOf = (t) => S.memProps.filter((m) => m.task_id === t.id);
-  api(`/tasks/${id}`).then((d) => { attInfo = d; draw(true); }).catch(() => {});
+  api(`/tasks/${id}`).then(async (d) => { attInfo = d; await loadServices(d.project_id); draw(true); }).catch(() => {});
   function draw(force) {
     const t = S.tasks.find((x) => x.id === id);
     if (!t) { clear(head, empty({ icon: '?', title: `Task #${id} not found`, text: 'It may have been deleted with its project.' })); return; }
@@ -259,6 +259,18 @@ async function renderDetail(pane, id, { stream, tab: startTab }) {
     if (t.status === 'awaiting_plan' && !sup) { act('Approve plan & implement', 'ok', 'approve-plan', { ask: 'Run the implementation with Cursor now (a second Cursor run; uses Pro usage)?', body: () => (planEdit[t.id] !== undefined && planEdit[t.id] !== t.plan_text ? { plan: planEdit[t.id] } : {}) }); act('Reject plan', 'bad', 'reject-plan', { reason: true }); }
     if (t.status === 'awaiting_escalation' && !sup) { act('Approve escalation to Cursor', 'ok', 'approve-escalation', { ask: 'Run this task on Cursor servers (uses Pro usage)?' }); act('Reject escalation', 'bad', 'reject-escalation', { reason: true }); }
     if (t.status === 'review' && !sup) { act(`Approve & merge into ${base}`, 'ok', 'approve-merge', { ask: `Merge ${t.branch} into ${base} with --no-ff in ${t.service_name ? 'the repository of service ' + t.service_name : 'the project repo'}?` }); act('Reject', 'bad', 'reject-merge', { reason: true }); }
+    if (['review', 'done'].includes(t.status) && !sup) {
+      const svc = (S.svc[t.project_id] || []).find((x) => x.id === t.service_id);
+      for (const [role, branch] of [['dev', svc && svc.dev_branch], ['uat', svc && svc.uat_branch], ['live', svc && svc.live_branch]]) {
+        if (!branch) continue;
+        const protectedRole = role !== 'dev';
+        act(`Merge ${t.branch} into ${branch}`, 'sec', 'merge-to', {
+          ask: protectedRole ? `Merge ${t.branch} into ${branch}? This is the protected ${role} branch. Nothing is pushed.` : null,
+          body: () => ({ role, confirm: protectedRole, source: t.branch, target: branch }),
+        });
+        act(`Push ${branch}`, 'ghost', 'push-target', { ask: `Push ${branch} to origin? This is a normal push, never a force-push.`, body: () => ({ role }) });
+      }
+    }
     if (['failed', 'rejected'].includes(t.status)) row.append(el('button', { className: 'btn primary', textContent: 'Re-run', title: 'Creates a new pending task with the same title, prompt, service and engine. You still approve its start.', onclick: async (e) => {
       await busy(e.currentTarget, async () => { try { const nt = await api(`/tasks/${t.id}/rerun`, {}); toast(`task #${nt.id} created as a re-run of #${t.id} (waiting for your approval)`, 'ok'); await loadTasks(); location.hash = `#/tasks/${nt.id}`; } catch (er) { toastError(er); } });
     } }));

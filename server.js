@@ -805,6 +805,18 @@ async function api(req, res, url) {
       store.addEvent(id, 'system', `re-run requested by human: new task #${nid}`);
       return sendJson(res, 201, store.getTask(nid));
     }
+    case 'merge-to': {
+      const envMerge = require('./lib/flow/env-merge');
+      const r = await envMerge.mergeTo(task, String(body.role || ''), { confirm: body.confirm === true, source: body.source, target: body.target });
+      if (!r.ok) return fail(res, r.status || 409, r.message, r.needs_confirm ? { needs_confirm: true, source: r.source, target: r.target, role: r.role } : undefined);
+      return sendJson(res, 200, { ...store.getTask(id), merge: r });
+    }
+    case 'push-target': {
+      const envMerge = require('./lib/flow/env-merge');
+      const r = await envMerge.pushTarget(task, String(body.role || ''));
+      if (!r.ok) return fail(res, r.status || 409, r.message);
+      return sendJson(res, 200, { ...store.getTask(id), push: r.message });
+    }
     case 'approve-merge': {
       if (task.status !== 'review') return fail(res, 409, `cannot merge: status is '${task.status}' (needs 'review')`);
       if (task.supervised) return fail(res, 409, 'task is supervised (hands-on session open): click Release first so the check runs and the current worktree state is committed');

@@ -183,6 +183,7 @@ Files:
   * `add-existing {path, ...}` (+ `inspect` first) - registers a folder that already exists; nothing is moved. A non-repo triggers a confirmable `git init` + baseline commit.
 * A remote URL can back only one active service (duplicates are refused with 409; archive the other first).
 * `POST /api/services/:id/{update,archive,unarchive,remove}`: *remove* only unregisters (files are never deleted; refused if the service has task history - archive it). `update` accepts optional `dev_branch`, `uat_branch` and `live_branch` (blank clears; a name must already exist in the repo). UAT and live are protected.
+* `POST /api/tasks/:id/merge-to {role, confirm?, source?, target?}` merges a `review` or `done` task into that configured branch. The merge runs in a temporary worktree. The target ref moves only after the service check passes on the task branch and again on the merged tree, and only if it is still the sha recorded before the merge (`git update-ref` with the old sha). UAT and live return 409 `needs_confirm` until `confirm` is true and `source` / `target` are the task branch and the configured branch. `POST /api/tasks/:id/push-target {role}` pushes that branch to `origin` and is refused until the merge succeeded. Neither call uses `--force`. The user's checkout is not the merge directory.
   `GET /api/services/:id/status` is local-only (branch, clean, HEAD). `GET /api/projects/:id/services/detect` proposes subfolder services.
 * **Project delete** (`POST /api/projects/:id/delete {confirm: <name>}`): removes database records only; repos, worktrees and branches are never touched (they are listed in the
   response). Refused while tasks are unfinished. Archive (`/archive`) is the soft alternative.
@@ -499,6 +500,8 @@ All endpoints are on `http://127.0.0.1:<port>`. POSTs need `Content-Type: applic
 | `POST /api/tasks/:id/approve-start` / `reject-start` | `{reason?}` / `{reason}` | `pending` -> `approved` / `rejected` |
 | `POST /api/tasks/:id/approve-escalation` / `reject-escalation` | `{reason?}` / `{reason}` | from `awaiting_escalation` |
 | `POST /api/tasks/:id/approve-merge` / `reject-merge` | `{reason?, override_reason?}` / `{reason}` | from `review`: guarded `git merge --no-ff` in the task's project (a feature consumer is refused with 409 until its provider is merged, unless a typed `override_reason` is sent) / `rejected` |
+| `POST /api/tasks/:id/merge-to` | `{role, confirm?, source?, target?}` | from `review` or `done`: merge into the service's configured `dev`, `uat`, or `live` branch in a temporary worktree, then fast-forward that ref only if the check passes. UAT and live need `confirm: true` plus the source and target names. Nothing is pushed |
+| `POST /api/tasks/:id/push-target` | `{role}` | push the configured branch to `origin` after `merge-to` succeeded. Never `--force` |
 | `POST /api/tasks/:id/cancel` | - | kill the running task (ends `failed: cancelled by user`) |
 
 Example:
@@ -534,7 +537,7 @@ curl -s -X POST -H 'Content-Type: application/json' http://127.0.0.1:4310/api/ta
 ## Safety properties
 
 - **Localhost only**: binds `127.0.0.1` (hard-coded); `Host` must be `127.0.0.1:<port>`/`localhost:<port>` (403 otherwise); POSTs with a foreign `Origin` get 403 and must be `application/json`.
-- **Never auto-merges**: the only merge path is `approve-merge`, called by a human. It refuses unless the project repo is on its default branch, clean, the branch exists and its tip equals the reviewed `head_sha`. A failed merge is `git merge --abort`ed. AI review is advisory only.
+- **Never auto-merges**: a human calls `approve-merge` (into the service default branch, and only when that checkout is on the branch and clean) or `merge-to` (into a configured dev, uat, or live branch, in a temporary worktree). UAT and live also need a confirm that names both branches. A failed `merge-to` leaves the target at the sha recorded before the attempt. Nothing is force-pushed. AI review is advisory only.
 - **Human gates**: before start, before merge, and (default) before escalating to Cursor.
 - **Worktree isolation**: every task runs in its own `git worktree` on `ai/task-<id>`; neither aider nor Cursor is ever pointed at the project's main checkout (explicit guard for Cursor).
 - **Cursor is sandboxed and approval-only**: `--sandbox enabled`, `--workspace <worktree>`, hard timeout, process-group kill, usage counters (no cap), no prompt for secrets; nothing runs on Cursor unless the task's engine says so (or an approved escalation).
