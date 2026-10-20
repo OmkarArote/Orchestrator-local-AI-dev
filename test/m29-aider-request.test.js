@@ -48,7 +48,8 @@ describe('M29 aider request (server)', () => {
     assert.doesNotMatch(rec.message, /package-lock/); assert.match(rec.message, /excluded from this run by the aider ignore file/);
     assert.equal(argAfter(rec, '--map-tokens'), '512');
     const ig = rec.aiderignore;
-    for (const l of ['package-lock.json', 'README*', '*.map', '.env*', '/big.json', '!/a.txt', '!/README.md']) assert.ok(ig.split('\n').includes(l), `${l} in ignore file`);
+    for (const l of ['package-lock.json', 'README*', '*.map', '.env*', '/big.json', '/**', '!/a.txt', '!/README.md']) assert.ok(ig.split('\n').includes(l), `${l} in ignore file`);
+    assert.match(await evText(S, t.id), /pin-only run/);
     assert.ok(!argAfter(rec, '--aiderignore').startsWith(t.worktree_path), 'ignore file lives outside the worktree');
     assert.match(await evText(S, t.id), /moved a "do not open" list out of the message \(2 path\(s\)/);
   });
@@ -76,5 +77,17 @@ describe('M29 aider request (server)', () => {
     const t2 = await S.runToReview(P.id, { title: 'mention', prompt: 'STUB_PRINT<<m1.txt|m2.txt>> STUB_SLOW', files: ['a.txt'], engine: 'local' }, 'failed');
     assert.match(t2.result_summary, /aider: STOPPED \(request too large: aider auto-added 2 mentioned file\(s\) \(81920 bytes, last m2\.txt\)/);
     assert.equal(git(repo, 'rev-parse', 'HEAD') + git(repo, 'status', '--porcelain'), before, 'main checkout untouched');
+  });
+});
+
+describe('M50 pin-only ignore file (pure)', () => {
+  const prep = require('../lib/aider-prep');
+  it('ignores everything but the pinned files when pinOnly is set, and only then', () => {
+    const on = prep.ignoreFileText({ wt: '/nonexistent', pinned: ['src/a.js'], pinOnly: true, maxFileBytes: 1 }).split('\n');
+    assert.ok(on.indexOf('/**') > 0 && on.indexOf('!/src/a.js') > on.indexOf('/**'), 'catch-all before the pinned re-allow');
+    const off = prep.ignoreFileText({ wt: '/nonexistent', pinned: ['src/a.js'], maxFileBytes: 1 }).split('\n');
+    assert.ok(!off.includes('/**'));
+    const none = prep.ignoreFileText({ wt: '/nonexistent', pinned: [], pinOnly: true, maxFileBytes: 1 }).split('\n');
+    assert.ok(!none.includes('/**'), 'no pinned files: the repo map stays usable');
   });
 });
