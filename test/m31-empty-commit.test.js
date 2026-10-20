@@ -44,3 +44,20 @@ describe('M31 aider artifacts are not commits', () => {
     assert.equal(git(repo, 'show', `${t.branch}:.aider.tags.cache.v4/cache`), 'old\n');
   });
 });
+
+describe('M50 mode-only and empty-file changes are not commits', () => {
+  require('./helpers/temp-env');
+  const { onlyEmptyChanges } = require('../lib/runner');
+  it('recognises numstat with only 0/0 entries (real git: chmod + empty file) and keeps real or binary edits', () => {
+    const r = makeRepo(path.join(require('node:os').tmpdir(), `m50-empty-${process.pid}`), { 'a.sh': 'echo\n', 'b.txt': 'b\n' });
+    fs.chmodSync(path.join(r, 'a.sh'), 0o755);
+    fs.writeFileSync(path.join(r, 'empty.txt'), '');
+    git(r, 'add', '-A');
+    const ns = git(r, 'diff', '--cached', '--numstat');
+    assert.ok(onlyEmptyChanges(ns), ns);
+    fs.writeFileSync(path.join(r, 'b.txt'), 'b2\n'); git(r, 'add', '-A');
+    assert.equal(onlyEmptyChanges(git(r, 'diff', '--cached', '--numstat')), false);
+    assert.equal(onlyEmptyChanges('-\t-\timg.png\n'), false);
+    assert.equal(onlyEmptyChanges(''), false);
+  });
+});
