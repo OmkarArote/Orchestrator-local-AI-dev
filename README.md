@@ -182,7 +182,7 @@ Files:
     Uses your git identity if set, else an `ai-orchestrator@localhost` identity. Never overwrites an existing folder.
   * `add-existing {path, ...}` (+ `inspect` first) - registers a folder that already exists; nothing is moved. A non-repo triggers a confirmable `git init` + baseline commit.
 * A remote URL can back only one active service (duplicates are refused with 409; archive the other first).
-* `POST /api/services/:id/{update,archive,unarchive,remove}`: *remove* only unregisters (files are never deleted; refused if the service has task history - archive it).
+* `POST /api/services/:id/{update,archive,unarchive,remove}`: *remove* only unregisters (files are never deleted; refused if the service has task history - archive it). `update` accepts optional `dev_branch`, `uat_branch` and `live_branch` (blank clears; a name must already exist in the repo). UAT and live are protected.
   `GET /api/services/:id/status` is local-only (branch, clean, HEAD). `GET /api/projects/:id/services/detect` proposes subfolder services.
 * **Project delete** (`POST /api/projects/:id/delete {confirm: <name>}`): removes database records only; repos, worktrees and branches are never touched (they are listed in the
   response). Refused while tasks are unfinished. Archive (`/archive`) is the soft alternative.
@@ -303,15 +303,16 @@ Plain ES modules in `public/` (`index.html`, `style.css`, `app.js`, `js/*.js`), 
 * Toasts for results/errors, modals instead of `alert/confirm/prompt` (Esc, focus trap, type-to-confirm for deletes), skeleton and empty states, keyboard-friendly, responsive.
 * Screenshots: `docs/screens/`. Dev helpers: `scripts/dev-demo.js` (isolated seeded instance), `scripts/shot.sh` (headless Chrome screenshot), `scripts/ui-smoke.sh` (drives the UI over CDP).
 
-## Upgrading the schema (v4, v5, v6), backups and rollback
+## Upgrading the schema (v4, v5, v6, v7), backups and rollback
 
-* At startup an older DB is migrated automatically after a **consistent backup** `data/pre-v4-migration-<timestamp>.db` (v3 -> v4) and `data/pre-v5-migration-<timestamp>.db` (v4 -> v5) and `data/pre-v6-migration-<timestamp>.db` (v5 -> v6) (`VACUUM INTO`), each in one transaction (expand-only: nothing is dropped,
+* At startup an older DB is migrated automatically after a **consistent backup** `data/pre-v4-migration-<timestamp>.db` (v3 -> v4) and `data/pre-v5-migration-<timestamp>.db` (v4 -> v5) and `data/pre-v6-migration-<timestamp>.db` (v5 -> v6) and `data/pre-v7-migration-<timestamp>.db` (v6 -> v7) (`VACUUM INTO`), each in one transaction (expand-only: nothing is dropped,
   legacy columns stay). **v5** (M1) adds `cursor_usage.project_id/service_id` (back-filled from the tasks; rows of already-deleted tasks stay unattributed), rebuilds the tiny `model_roles` table so it also allows the roles `chat` and `embedding`,
   and creates the structures reserved for the next milestones in one go (`chat_conversations`, `chat_messages`, `features`, `task_artifacts`, `tasks.feature_id/feature_role/superseded_by`, `task_groups.feature_id/gate`) - nothing uses them yet. Existing projects become projects with one **legacy** service (whole repo) and keep their tasks.
   **v6** (M6) adds the attachment tables (`attachments`, `attachment_links`, `attachment_derivations`) and rebuilds `model_roles` once more so the CHECK also allows `image`, `video`, `audio`, `document` (reserved: `lib/models.js` lists a role only once it has a consumer). It is additive; `ORCH_TEST_FAIL_MIGRATION_V6=1` is the test-only failure-injection hook.
+  **v7** adds optional `services.dev_branch`, `services.uat_branch` and `services.live_branch` (empty is allowed; a name must already exist as `refs/heads/<name>`), plus `tasks.flow` (default `v1`, so rows already in the database stay on v1) and `tasks.iteration` (default 1). UAT and live are protected: a merge into either needs an explicit confirm that names the source branch and the target branch. `ORCH_TEST_FAIL_MIGRATION_V7=1` is the test-only failure-injection hook.
   Earlier snapshots: `data/pre-projects-migration-*.db` (v0->v1).
 * **Rollback = restore the backup DB AND the old code together.** Older code refuses a newer DB ("schema vN is newer than this orchestrator"), and the new code cannot read an older DB without migrating it.
-  Steps: `./stop.sh`; `git checkout <old tag>`; copy the matching `pre-v6-migration-*.db` (to go back to v5 code), `pre-v5-migration-*.db` (v4 code) or `pre-v4-migration-*.db` (v3 code) over `data/orchestrator.db`; `./start.sh`. (Anything created after the migration is lost on rollback.)
+  Steps: `./stop.sh`; `git checkout <old tag>`; copy the matching `pre-v7-migration-*.db` (to go back to v6 code), `pre-v6-migration-*.db` (v5 code), `pre-v5-migration-*.db` (v4 code) or `pre-v4-migration-*.db` (v3 code) over `data/orchestrator.db`; `./start.sh`. (Anything created after the migration is lost on rollback.)
 * The test suite never touches the real data dir (`config.js` refuses real-dir fallbacks under `node --test`).
 * **The real DB is only opened by `node server.js`.** `config.js` hands out the default `data/orchestrator.db` to the server entry only (or with `ORCH_ALLOW_DEFAULT_DB=1`, on purpose) and never under `node --test` / `NODE_ENV=test`; a one-off `node -e "require('./lib/db')"`, a script or a tool must set `ORCH_DB` to a throw-away path or it fails with "refusing to open the real orchestrator DB" (`test/m15-db-guard.test.js`). Background: a stray `require` once opened and auto-migrated the live DB (a backup was made first).
 

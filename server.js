@@ -414,6 +414,13 @@ async function serviceApi(req, res, url) {
       if (!br || br.startsWith('-') || (await git(repo.assertUsable(service), ['rev-parse', '--verify', '-q', `refs/heads/${br}^{commit}`])).code !== 0) return fail(res, 400, `branch '${br}' not found in ${service.local_path}`);
       body.default_branch = br;
     }
+    for (const key of ['dev_branch', 'uat_branch', 'live_branch']) {
+      if (body[key] === undefined) continue;
+      const br = body[key] == null ? '' : String(body[key]).trim();
+      if (!br) { body[key] = null; continue; }
+      if (br.startsWith('-') || (await git(repo.assertUsable(service), ['rev-parse', '--verify', '-q', `refs/heads/${br}^{commit}`])).code !== 0) return fail(res, 400, `branch '${br}' not found in ${service.local_path}`);
+      body[key] = br;
+    }
     return sendJson(res, 200, svc.serviceView(project, serviceOps.update(project, service, body)));
   }
   if (m[2] === 'remove') {

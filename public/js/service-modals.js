@@ -136,11 +136,12 @@ export function editServiceModal(project, s, { onDone }) {
     showMsg(err, '');
     try {
       const env_config = {}; for (const line of env.value.split('\n')) { if (!line.trim()) continue; const i = line.indexOf('='); if (i < 1) throw new Error(`env line needs NAME=value: ${line}`); env_config[line.slice(0, i).trim()] = line.slice(i + 1); }
-      await api(`/services/${s.id}/update`, { name: f.name.value, type: type.value, stack: f.stack.value, description: desc.value, check_cmd: f.check_cmd.value, install_cmd: f.install_cmd.value, default_branch: f.default_branch.value, env_config });
+      await api(`/services/${s.id}/update`, { name: f.name.value, type: type.value, stack: f.stack.value, description: desc.value, check_cmd: f.check_cmd.value, install_cmd: f.install_cmd.value, default_branch: f.default_branch.value, dev_branch: f.dev_branch.value, uat_branch: f.uat_branch.value, live_branch: f.live_branch.value, env_config });
       toast('service saved', 'ok'); m.close(); await onDone();
     } catch (er) { showMsg(err, er.message); }
   }) });
   const m = modal({ title: `Edit service ${s.name}`, wide: true, body: el('div', {}, el('div', { className: 'form-grid' }, field('Name', inp('name', s.name)), field('Type', type), field('Stack', inp('stack', s.stack, 'node, python/fastapi')), field('Default branch', inp('default_branch', s.default_branch)),
+    field('Dev branch', inp('dev_branch', s.dev_branch, 'optional; must exist')), field('UAT branch', inp('uat_branch', s.uat_branch, 'optional; protected')), field('Live branch', inp('live_branch', s.live_branch, 'optional; protected')),
     field('Check command', inp('check_cmd', s.check_cmd, 'blank = project default')), field('Install command', inp('install_cmd', s.install_cmd)), el('div', { className: 'full' }, field('Description / responsibility (the router reads this)', desc)),
     el('div', { className: 'full' }, field('Environment (non-secret only)', env, 'secrets are rejected and never stored; use your shell or keychain'))), err), footer: [el('button', { className: 'btn sec', textContent: 'Cancel', onclick: () => m.close() }), go] });
 }
