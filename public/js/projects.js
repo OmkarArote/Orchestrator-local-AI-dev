@@ -38,7 +38,7 @@ function archiveControl(p, after) {
   return el('button', { className: 'btn sm ghost', type: 'button', textContent: p.archived ? 'Unarchive' : 'Archive', title: p.archived ? 'Show this project in the list and in pickers again' : 'Hide this project from the list and from pickers. Repositories stay on disk.', onclick: (e) => { e.stopPropagation(); busy(e.currentTarget, async () => { await api(`/projects/${p.id}/${p.archived ? 'unarchive' : 'archive'}`, {}); toast(p.archived ? 'project restored' : 'project archived', 'ok'); await after(); }); } });
 }
 function projectCard(p, open, after) {
-  const tasks = S.tasks.filter((t) => t.project_id === p.id), active = tasks.filter((t) => ['pending', 'approved', 'running', 'checking', 'awaiting_escalation', 'awaiting_plan'].includes(t.status)).length, review = tasks.filter((t) => t.status === 'review').length;
+  const tasks = S.tasks.filter((t) => t.project_id === p.id), active = tasks.filter((t) => ['pending', 'approved', 'running', 'checking', 'awaiting_escalation', 'awaiting_plan', 'awaiting_approval'].includes(t.status)).length, review = tasks.filter((t) => t.status === 'review').length;
   const c = el('div', { className: 'card hover' + (p.archived ? ' flat' : ''), style: p.archived ? { opacity: 0.75 } : null },
     el('div', { tabIndex: 0, role: 'link', 'aria-label': `open project ${p.name}`, onclick: () => open(p), onkeydown: (e) => { if (e.key === 'Enter') open(p); } },
       el('div', { className: 'head' }, el('h3', {}, p.name), p.archived ? badge('archived', 's-rejected') : null),

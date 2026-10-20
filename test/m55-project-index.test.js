@@ -167,19 +167,19 @@ describe('schema v8 migration', () => {
     const envFor = (extra = {}) => ({ ...process.env, ORCH_DB: db, ORCH_LOG_DIR: path.join(dir, 'logs'), ORCH_WORKTREES: path.join(dir, 'wt'), ORCH_CONTEXT_DIR: path.join(dir, 'ctx'), ...extra });
     const open = (extra) => execFileSync(process.execPath, ['--no-warnings', '-e', "const s=require('./lib/db'); console.log(JSON.stringify({v:s.schemaVersion()}))"], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: envFor(extra) });
     try {
-      assert.equal(JSON.parse(open().trim().split('\n').filter((l) => !l.startsWith('[db]')).pop()).v, 9);
+      assert.equal(JSON.parse(open().trim().split('\n').filter((l) => !l.startsWith('[db]')).pop()).v, 10);
       const w = new DatabaseSync(db);
       w.exec("INSERT INTO projects (name, slug, path, default_branch, check_cmd) VALUES ('p','p','','','true')");
       w.exec("INSERT INTO services (project_id, name, path, local_path, default_branch) VALUES (1,'api','.','/x','main')");
       w.exec('DROP TABLE index_symbols'); w.exec('DROP TABLE index_edges'); w.exec('DROP TABLE index_files'); w.exec('DROP TABLE index_summaries'); w.exec('DROP TABLE index_meta');
       w.exec('PRAGMA user_version = 7');
       w.close();
-      assert.equal(JSON.parse(open().trim().split('\n').filter((l) => !l.startsWith('[db]')).pop()).v, 9);
+      assert.equal(JSON.parse(open().trim().split('\n').filter((l) => !l.startsWith('[db]')).pop()).v, 10);
       const d = new DatabaseSync(db, { readOnly: true });
-      const n = d.prepare("SELECT COUNT(*) c FROM sqlite_master WHERE name IN ('index_files','index_symbols','index_edges','index_summaries','index_meta','index_embeddings')").get().c;
+      const n = d.prepare("SELECT COUNT(*) c FROM sqlite_master WHERE name IN ('index_files','index_symbols','index_edges','index_summaries','index_meta','index_embeddings','index_chunks','index_chunk_vectors')").get().c;
       const projects = d.prepare('SELECT COUNT(*) c FROM projects').get().c;
       d.close();
-      assert.equal(n, 6);
+      assert.equal(n, 8);
       assert.equal(projects, 1);
       assert.equal(fs.readdirSync(dir).filter((f) => f.startsWith('pre-v8-migration-')).length, 1);
       assert.equal(fs.readdirSync(dir).filter((f) => f.startsWith('pre-v9-migration-')).length, 1);

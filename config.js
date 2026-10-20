@@ -118,6 +118,21 @@ module.exports = {
   // Index embeddings are an extra ranking signal. Off with ORCH_INDEX_EMBED=0. The model is used only when it is already installed.
   INDEX_EMBED: env.ORCH_INDEX_EMBED !== '0',
   INDEX_EMBED_MODEL: env.ORCH_INDEX_EMBED_MODEL || 'nomic-embed-text',
+  // Chunk retrieval. Off unless ORCH_RAG=1, so the v2 reader stays on rankIndex.
+  RAG: env.ORCH_RAG === '1',
+  RAG_WINDOW: boundedInt('ORCH_RAG_WINDOW', env.ORCH_RAG_WINDOW, 60, 20, 200),
+  RAG_W_BM25: num(env.ORCH_RAG_W_BM25, 0.5),
+  RAG_W_VECTOR: num(env.ORCH_RAG_W_VECTOR, 0.3),
+  RAG_W_GRAPH: num(env.ORCH_RAG_W_GRAPH, 0.2),
+  // Scope gate. Off unless ORCH_DECIDER=1. Laya is local; ornith is the fallback. No hosted client.
+  DECIDER: env.ORCH_DECIDER === '1',
+  DECIDER_ACT: num(env.ORCH_DECIDER_ACT, 0.9),
+  DECIDER_ASK: num(env.ORCH_DECIDER_ASK, 0.6),
+  LAYA_PORT: boundedInt('ORCH_LAYA_PORT', env.ORCH_LAYA_PORT, 4327, 1, 65535),
+  LAYA_AUTOSTART: env.ORCH_LAYA_AUTOSTART !== '0',
+  LAYA_KEEP: env.ORCH_LAYA_KEEP === '1',
+  LAYA_PYTHON: env.ORCH_LAYA_PYTHON || 'python3',
+  LAYA_MODEL: env.ORCH_LAYA_MODEL || '',
   // hard timeouts (ms) for every subprocess
   AIDER_TIMEOUT_MS: num(env.ORCH_AIDER_TIMEOUT_MS, 20 * 60 * 1000),
   INSTALL_TIMEOUT_MS: num(env.ORCH_INSTALL_TIMEOUT_MS, 10 * 60 * 1000),

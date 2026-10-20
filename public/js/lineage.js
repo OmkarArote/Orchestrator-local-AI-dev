@@ -36,6 +36,7 @@ function card(n) {
   const reason = n.reason ? el('div', { className: 'small' }, n.reason) : null;
   const steps = names.length > 1 ? el('div', { className: 'ln-chain' }, names.join(' → ')) : null;
   const bits = [];
+  if (n.note) bits.push(el('div', { className: 'small dim' }, 'Included'), el('pre', { className: 'plain' }, String(n.note).slice(0, 2000)));
   if (n.check) bits.push(el('div', { className: 'small dim' }, 'Check'), el('pre', { className: 'plain' }, String(n.check).slice(-400)));
   if (n.sha) bits.push(el('div', { className: 'small dim' }, 'Commit'), el('code', {}, String(n.sha).slice(0, 12)));
   const details = bits.length ? el('details', { className: 'ln-details' }, el('summary', {}, 'Details'), ...bits) : null;

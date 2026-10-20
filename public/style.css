@@ -106,6 +106,7 @@ input[type=checkbox], input[type=radio] { width: auto; accent-color: var(--acc);
 .s-pending, .s-awaiting_approval, .s-queued { background: var(--warn-soft); color: var(--warn); } .s-approved, .s-running, .s-checking, .s-active { background: var(--acc-soft); color: var(--acc); }
 .s-running::before, .s-checking::before { animation: pulse 1.2s infinite; } @keyframes pulse { 50% { opacity: .2; } }
 .s-awaiting_escalation { background: var(--cloud-soft); color: var(--cloud); } .s-awaiting_plan { background: var(--cyan-soft); color: var(--cyan); }
+.s-awaiting_approval { background: var(--warn-soft, var(--cloud-soft)); color: var(--warn, var(--cloud)); }
 .s-review { background: var(--purple-soft); color: var(--purple); } .s-done, .s-ok, .s-ready, .s-merged { background: var(--ok-soft); color: var(--ok); }
 .s-split { background: var(--surface-2); color: var(--accent, var(--dim)); }
 .s-failed, .s-rejected, .s-blocked, .s-unauthorized, .s-missing, .s-cancelled { background: var(--bad-soft); color: var(--bad); } .s-archived { background: var(--surface-2); color: var(--dim); }

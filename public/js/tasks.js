@@ -231,6 +231,10 @@ async function renderDetail(pane, id, { stream, tab: startTab }) {
     if (t.result_summary) metaBits.push(el('div', { className: 'callout' }, el('b', {}, 'Result: '), t.result_summary));
     if (t.supervised) metaBits.push(el('div', { className: 'callout warn' }, "SUPERVISED: a hands-on session (Cursor IDE / CLI) is open on this task's worktree. The runner is paused for it; merge and approvals are blocked. Edit as you like, then click Release: the orchestrator runs the check and commits the worktree state on the task branch (\u2192 review)."));
     if (t.status === 'awaiting_escalation') metaBits.push(el('div', { className: 'callout warn' }, `Local attempt failed. Escalate to Cursor (model ${t.model || 'auto'})? This runs on Cursor servers and uses your Pro usage. Nothing has been sent to Cursor yet.`));
+    if (t.status === 'awaiting_approval' && t.routing_state === 'gate' && t.routing) {
+      const items = Array.isArray(t.routing.items) ? t.routing.items : [];
+      metaBits.push(el('div', { className: 'callout warn stack' }, el('b', {}, 'Scope gate wants a decision'), el('div', { className: 'small' }, `Backend ${t.routing.backend || 'unknown'} · route ${t.routing.route || '-'} · risk ${t.routing.risk ?? '-'}`), ...items.map((it) => el('div', { className: 'small' }, `${it.file || it.id}: ${String(it.label)} (${Number(it.confidence || 0).toFixed(2)}, ${it.band})`))));
+    }
     if (t.plan_text) {
       const pc = el('div', { className: 'callout plan stack' }, el('b', {}, `Cursor plan (${t.plan_state}${t.model_used ? ', model ' + t.model_used : ''})`));
       if (t.status === 'awaiting_plan') {
@@ -267,6 +271,10 @@ async function renderDetail(pane, id, { stream, tab: startTab }) {
       }
     }
     if (t.status === 'awaiting_plan' && !sup) { act('Approve plan & implement', 'ok', 'approve-plan', { ask: 'Run the implementation with Cursor now (a second Cursor run; uses Pro usage)?', body: () => (planEdit[t.id] !== undefined && planEdit[t.id] !== t.plan_text ? { plan: planEdit[t.id] } : {}) }); act('Reject plan', 'bad', 'reject-plan', { reason: true }); }
+    if (t.status === 'awaiting_approval' && t.routing_state === 'gate' && !sup) {
+      act('Approve scope', 'ok', 'approve-gate', { ask: 'Continue with the files the gate marked in scope?' });
+      act('Escalate to Cursor', 'sec', 'escalate-gate', { ask: 'Run this task on Cursor servers (uses Pro usage)?' });
+    }
     if (t.status === 'awaiting_escalation' && !sup) { act('Approve escalation to Cursor', 'ok', 'approve-escalation', { ask: 'Run this task on Cursor servers (uses Pro usage)?' }); act('Reject escalation', 'bad', 'reject-escalation', { reason: true }); }
     if (t.status === 'review' && !sup) {
       act('Approve', 'sec', 'approve', { ask: `Approve this task without merging into ${base}? ${base} is not changed.` });

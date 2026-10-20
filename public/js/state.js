@@ -25,4 +25,4 @@ export function setProjectFilter(v) { S.filter.project = v ? String(v) : ''; loc
 export const project = (id) => S.projects.find((p) => String(p.id) === String(id));
 export const projName = (id) => (project(id) || {}).name || `#${id}`;
 export const activeServices = (pid) => (S.svc[pid] || []).filter((s) => !s.archived);
-export const ACTIVE_STATUSES = ['pending', 'approved', 'running', 'checking', 'awaiting_escalation', 'awaiting_plan'];
+export const ACTIVE_STATUSES = ['pending', 'approved', 'running', 'checking', 'awaiting_escalation', 'awaiting_plan', 'awaiting_approval'];

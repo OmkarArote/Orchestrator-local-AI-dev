@@ -446,7 +446,7 @@ async function serviceApi(req, res, url) {
     return sendJson(res, 200, serviceOps.unregister(service));
   }
   if (m[2] === 'archive') {
-    const used = store.listTasks(project.id).filter((t) => t.service_id === service.id && ['pending', 'approved', 'running', 'checking', 'awaiting_escalation', 'awaiting_plan'].includes(t.status));
+    const used = store.listTasks(project.id).filter((t) => t.service_id === service.id && ['pending', 'approved', 'running', 'checking', 'awaiting_escalation', 'awaiting_plan', 'awaiting_approval'].includes(t.status));
     if (used.length) return fail(res, 409, `service is used by open tasks (${used.map((t) => '#' + t.id).join(', ')}); finish them first`);
   }
   store.updateService(service.id, { archived: m[2] === 'archive' });
@@ -900,6 +900,24 @@ async function api(req, res, url) {
       store.updateFields(id, { result_summary: `${task.result_summary || ''}; merge rejected: ${reason}` });
       store.addApproval(id, 'merge', 'rejected', reason);
       store.addEvent(id, 'system', `merge rejected: ${reason} (branch ${task.branch} kept, worktree kept)`);
+      return sendJson(res, 200, store.getTask(id));
+    }
+    case 'approve-gate': {
+      if (task.status !== 'awaiting_approval' || task.routing_state !== 'gate') return fail(res, 409, `cannot approve scope: status is '${task.status}'`);
+      const saved = task.routing || {};
+      const files = Array.isArray(body.files) && body.files.length ? body.files.filter((p) => typeof p === 'string') : (saved.files || []);
+      if (!files.length) return fail(res, 400, 'scope needs at least one file');
+      const next = { ...saved, action: 'act', files, route: saved.route === 'cursor' ? 'local-small' : (saved.route || 'local-small') };
+      if (!store.transition(id, 'awaiting_approval', 'approved', { routing_state: 'gate-approved', routing_json: JSON.stringify(next) })) return fail(res, 409, 'status changed');
+      store.addEvent(id, 'decision', `scope approved by human: ${files.join(', ')}`);
+      return sendJson(res, 200, store.getTask(id));
+    }
+    case 'escalate-gate': {
+      if (task.status !== 'awaiting_approval' || task.routing_state !== 'gate') return fail(res, 409, `cannot escalate scope: status is '${task.status}'`);
+      const saved = task.routing || {};
+      const next = { ...saved, action: 'escalate', route: 'cursor', files: [] };
+      if (!store.transition(id, 'awaiting_approval', 'approved', { routing_state: 'gate-approved', routing_json: JSON.stringify(next) })) return fail(res, 409, 'status changed');
+      store.addEvent(id, 'decision', 'scope escalated to Cursor by human');
       return sendJson(res, 200, store.getTask(id));
     }
     case 'approve-escalation': {
