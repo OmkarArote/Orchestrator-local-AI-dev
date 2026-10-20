@@ -50,12 +50,12 @@ Defaults: repos may live under `~/work` (more folders can be authorized in the U
 
 ### Safety model
 
-Localhost-only (Host/Origin checks, no auth, so do not expose the port), authorized folders only (symlink-safe), hardened git (no hooks, https/ssh only, no credentials stored), hard timeouts and process-group kills on every subprocess, worktree isolation, human approval for merge. When `ORCH_FLOW` is unset, start and escalation also wait for a click, and Cursor runs only after that click. With `ORCH_FLOW=v2`, `orc do` starts the task and a failed local attempt can escalate without a click. Cursor usage is counted (there is no daily cap). Nothing merges automatically. Do not put secrets in task prompts: prompts are stored in the local database, shown in logs and, for Cursor tasks, sent to Cursor.
+Localhost-only (Host/Origin checks, no auth, so do not expose the port), authorized folders only (symlink-safe), hardened git (no hooks, https/ssh only, no credentials stored), hard timeouts and process-group kills on every subprocess, worktree isolation, human approval for merge. The default flow is v2: `orc do` starts the task and a failed local attempt can escalate without a click. `ORCH_FLOW=v1` keeps the old flow, where start and escalation wait for a click and Cursor runs only after that click. Cursor usage is counted (there is no daily cap). Nothing merges automatically. Do not put secrets in task prompts: prompts are stored in the local database, shown in logs and, for Cursor tasks, sent to Cursor.
 
 ### Development
 
 ```bash
-npm test            # 493 tests on the author machine (493 pass, 0 fail, 0 skipped); fresh-clone/CI count is recorded after the pull-request run (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
+npm test            # 512 tests on the author machine (512 pass, 0 fail, 0 skipped); fresh-clone/CI count is recorded after the pull-request run (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
 npm run doctor      # same as ./setup.sh
 ```
 
@@ -63,7 +63,7 @@ Continuing development in another tool (e.g. Cursor)? Start with `docs/HANDOFF-C
 
 ### Agentic flow (`ORCH_FLOW=v2`)
 
-Unset `ORCH_FLOW` stays on v1. v1 logs a warning for a multi-file prompt and keeps the local engine. v2, for engine `auto`, reads the repo, plans, edits one step at a time, runs the check, and repairs. `POST /api/do` creates the task already approved, so there is no start click. The run stops at `review`. `approve-merge` stays human-only.
+Unset `ORCH_FLOW`, or `ORCH_FLOW=v2`, selects v2. `ORCH_FLOW=v1` keeps the old flow: a multi-file prompt stays on the local engine and only logs a warning. v2, for engine `auto`, reads the repo, plans, edits one step at a time, runs the check, and repairs. The flow is stored on the task when it is created, so a task already running on v1 stays on v1. `POST /api/do` creates the task already approved, so there is no start click. The run stops at `review`. `approve-merge` stays human-only.
 
 The local fallback order is `ornith:9b`, then `qwen3.5:9b` when that model is already installed, then Cursor (`ORCH_V2_LOCAL_MODELS`). Nothing is downloaded. After `ORCH_V2_CURSOR_RUNS` Cursor runs in one task (default 3), the task fails with reason `budget`.
 
@@ -414,7 +414,7 @@ The dashboard shows engine + model per task and a clear badge: **local** (green,
 | `ORCH_LOCAL_NUM_PREDICT` | `4096` | `num_predict` sent to aider when the coding role does not set one (integer 1..131072, or -1) |
 | `ORCH_OLLAMA_KEEP_ALIVE` | `30m` | top-level `keep_alive` on native `/api/chat` (router/memory when `ORCH_ROUTER_API=ollama`, and dashboard chat). Not sent on `/v1`. Aider does not get this field; set the Ollama server variable `OLLAMA_KEEP_ALIVE` if aider runs should keep the model loaded |
 | `ORCH_PROTECTED_BRANCHES` | `main,uat,UAT` | comma-separated. A task whose `base_ref` is one of these is refused before `worktree add`. The service default branch is still allowed (v1 tasks cut from `main`) |
-| `ORCH_FLOW` | unset (`v1`) | `v2` selects the agentic flow. A multi-file prompt on engine `auto` is planned with Cursor and then implemented, with no plan-approval click. Unset keeps the local engine and only logs a warning |
+| `ORCH_FLOW` | unset (`v2`) | `v2` is the agentic flow. A multi-file prompt on engine `auto` is planned, then implemented, with no plan-approval click. `v1` keeps the local engine and only logs a warning. The value is copied onto the task at create time; the runner follows that copy |
 | `ORCH_EXPECTED_BASE` | unset | JSON object of service name to branch, for example `{"api-seva":"feature/city_filter"}`. When the resolved base differs: `v2` refuses with `base_mismatch` before `worktree add`; `v1` logs a warning and continues. An explicit task `base_ref` (the `orc do --base` override) is logged and used |
 | `ORCH_V2_CURSOR_RUNS` | `3` | Cursor runs allowed inside one v2 task. The next escalation after this fails the task with reason `budget`. This is not a daily cap |
 | `ORCH_V2_STEP_ATTEMPTS` | `3` | attempts per plan step in v2 (the first try plus two repairs) |

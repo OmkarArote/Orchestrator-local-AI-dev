@@ -87,7 +87,7 @@ module.exports = {
   LOCAL_NUM_CTX: 16384, // coding-role default when the role does not set num_ctx; not an env var (CTX_WARN, under CTX_MAX)
   OLLAMA_KEEP_ALIVE: env.ORCH_OLLAMA_KEEP_ALIVE ? String(env.ORCH_OLLAMA_KEEP_ALIVE) : '30m', // top-level field on native /api/chat only
   PROTECTED_BRANCHES: (env.ORCH_PROTECTED_BRANCHES !== undefined ? env.ORCH_PROTECTED_BRANCHES : 'main,uat,UAT').split(',').map((s) => s.trim()).filter(Boolean),
-  FLOW: env.ORCH_FLOW === 'v2' ? 'v2' : 'v1', // v2 is the agentic flow; unset stays v1
+  FLOW: env.ORCH_FLOW === 'v1' ? 'v1' : 'v2', // unset or v2 is the agentic flow; ORCH_FLOW=v1 keeps the old flow
   EXPECTED_BASE: expectedBaseMap(env.ORCH_EXPECTED_BASE), // { serviceName: branch }; empty object when unset
   // v2 escalation budget. Not a daily cap: these count inside one task, then the task fails with reason `budget`.
   V2_CURSOR_RUNS: boundedInt('ORCH_V2_CURSOR_RUNS', env.ORCH_V2_CURSOR_RUNS, 3, 0, 50),
