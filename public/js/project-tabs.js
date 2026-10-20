@@ -40,6 +40,30 @@ export async function memoryTab(box, ctx) {
   await draw();
 }
 
+// ---------------------------------------------------------------- project index
+export async function indexTab(box, ctx) {
+  const p = ctx.p;
+  const svcs = (await loadServices(p.id)).filter((s) => !s.archived);
+  if (!svcs.length) { clear(box, empty({ icon: 'folder', title: 'No services yet', text: 'Add a service, then build its index from the default branch.' })); return; }
+  const q = new URLSearchParams((location.hash.split('?')[1]) || '').get('service');
+  const sid = svcs.some((s) => String(s.id) === q) ? q : String(svcs[0].id);
+  const sel = select(svcs.map((s) => [s.id, s.name]), sid, { 'aria-label': 'Service', onchange: () => { location.hash = `#/projects/${p.id}/index?service=${sel.value}`; } });
+  let data = null, err = '';
+  try { data = await api(`/services/${sid}/index`); } catch (e) { err = e.message; }
+  const rebuild = el('button', { className: 'btn primary', textContent: data && data.built ? 'Rebuild' : 'Build index', onclick: (e) => busy(e.currentTarget, async () => {
+    try { await api(`/services/${sid}/index/rebuild`, {}); toast('index updated', 'ok'); ctx.redraw(); } catch (er) { toastError(er); }
+  }) });
+  if (err) { clear(box, el('div', { className: 'row mb' }, field('Service', sel)), el('div', { className: 'callout bad' }, err)); return; }
+  const sha = (h) => (h ? h.slice(0, 8) : '—');
+  const mods = (data.modules || []).filter((m) => m.path !== '(root)' || m.summary);
+  clear(box,
+    el('div', { className: 'row mb' }, field('Service', sel), el('span', { style: { flex: 1 } }), rebuild),
+    data.stale ? el('div', { className: 'callout warn mb' }, data.built ? `Index is stale. Indexed ${sha(data.commit_sha)}, default branch is ${sha(data.head_sha)}.` : `Not indexed yet. Default branch is ${sha(data.head_sha)}.`) : el('div', { className: 'callout ok mb' }, `Indexed at ${sha(data.commit_sha)} · ${data.file_count} file(s)${data.framework && data.framework.framework && data.framework.framework !== 'other' ? ` · ${data.framework.framework}` : ''}.`),
+    el('div', { className: 'card mb' }, el('h3', {}, 'Modules'), mods.length ? el('div', { className: 'stack' }, ...mods.map((m) => el('div', {}, el('div', { className: 'row' }, el('b', { className: 'mono' }, m.path), m.summary_stale ? badge('summary stale', 's-pending') : null, el('span', { className: 'small dim' }, `${m.files} file(s), ${m.symbols} symbol(s)`)), el('div', { className: 'small' }, m.summary || 'No summary yet. Rebuild to write one.')))) : el('p', { className: 'dim' }, 'Build the index to see modules.')),
+    el('div', { className: 'card mb' }, el('h3', {}, 'Architecture card'), el('div', { className: 'row' }, ...(data.architecture || []).map((a) => chip(`${a.name}${a.present ? '' : ' (missing)'}`)))),
+    el('div', { className: 'card' }, el('h3', {}, 'Tree'), (data.files || []).length ? el('pre', { className: 'plain' }, data.files.map((f) => `${f.path}  ${f.size} B`).join('\n')) : el('p', { className: 'dim' }, 'No files indexed.')));
+}
+
 // ---------------------------------------------------------------- sequences
 const DEP_HELP = {
   stack: 'stack \u2013 each step is cut from the previous step\'s branch once it passed its checks (same repo only; merge them in order)',

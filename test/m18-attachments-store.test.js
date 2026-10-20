@@ -30,7 +30,7 @@ const project = () => store.createProject({ name: `p${++n}`, path: path.join(bas
 
 describe('M6 attachments: fresh DB + paths', () => {
   it('a new database is at schema v7 with the attachment tables, and the attachments dir is next to the DB', () => {
-    assert.equal(store.schemaVersion(), 7);
+    assert.equal(store.schemaVersion(), 8);
     assert.equal(cfg.ATTACH_DIR, path.join(base, 'data', 'attachments'));
     assert.ok(cfg.ownDirs().includes(cfg.ATTACH_DIR));
     assert.throws(() => att.blobPath('../../etc/passwd'), /invalid attachment hash/);

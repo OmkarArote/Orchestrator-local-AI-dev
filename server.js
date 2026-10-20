@@ -398,11 +398,27 @@ async function projectSubApi(req, res, url) {
 }
 
 async function serviceApi(req, res, url) {
-  const m = url.pathname.match(/^\/api\/services\/(\d+)\/(update|archive|unarchive|remove|status|detect)$/);
+  const m = url.pathname.match(/^\/api\/services\/(\d+)\/(update|archive|unarchive|remove|status|detect|index(?:\/(?:rebuild|search))?)$/);
   if (!m) return fail(res, 404, 'unknown endpoint');
   const service = store.getService(Number(m[1]));
   if (!service) return fail(res, 404, 'service not found');
   const project = store.getProject(service.project_id);
+  if (m[2] === 'index' || m[2] === 'index/search' || m[2] === 'index/rebuild') {
+    const index = require('./lib/index/build');
+    try {
+      if (m[2] === 'index/search') {
+        if (req.method !== 'GET') return fail(res, 405, 'GET only');
+        return sendJson(res, 200, index.search(service.id, url.searchParams.get('q') || ''));
+      }
+      if (m[2] === 'index') {
+        if (req.method !== 'GET') return fail(res, 405, 'GET only');
+        return sendJson(res, 200, await index.getIndex(service, project));
+      }
+      if (req.method !== 'POST') return fail(res, 405, 'POST only');
+      if (service.archived) return fail(res, 409, 'service is archived');
+      return sendJson(res, 200, await index.rebuild(service, project));
+    } catch (e) { return fail(res, e.status || 400, e.message); }
+  }
   if (m[2] === 'status' || m[2] === 'detect') {
     if (req.method !== 'GET') return fail(res, 405, 'GET only');
     if (m[2] === 'status') return sendJson(res, 200, await serviceOps.status(service));

@@ -3,10 +3,10 @@ import { el, clear, api, badge, chip, statusBadge, empty, skeletonCards, skeleto
 import { S, loadProjects, loadServices, loadTasks, setProjectFilter, project as projectOf, activeServices } from './state.js';
 import { addServiceModal, newProjectModal, editServiceModal, rootsCard } from './service-modals.js';
 import { newTaskModal } from './tasks.js';
-import { contextTab, memoryTab, sequencesTab, cursorUsageCard } from './project-tabs.js';
+import { contextTab, memoryTab, sequencesTab, indexTab, cursorUsageCard } from './project-tabs.js';
 import { cursorRulesCard, cursorRulesModal } from './cursor-rules.js';
 
-const TABS = [['services', 'Services'], ['deps', 'Dependencies'], ['context', 'Context'], ['memory', 'Memory'], ['sequences', 'Sequences'], ['settings', 'Settings']];
+const TABS = [['services', 'Services'], ['index', 'Index'], ['deps', 'Dependencies'], ['context', 'Context'], ['memory', 'Memory'], ['sequences', 'Sequences'], ['settings', 'Settings']];
 
 export async function render(main, route) {
   if (route.id) return renderDetail(main, route);
@@ -73,7 +73,7 @@ async function renderDetail(main, route) {
   }
   async function drawTab() {
     if (cleanup) { try { cleanup(); } catch { /* ignore */ } cleanup = null; }
-    const view = { services: servicesTab, deps: depsTab, context: contextTab, memory: memoryTab, sequences: sequencesTab, settings: settingsTab }[tab];
+    const view = { services: servicesTab, index: indexTab, deps: depsTab, context: contextTab, memory: memoryTab, sequences: sequencesTab, settings: settingsTab }[tab];
     clear(body, skeletonLines(5));
     try { const box = el('div'); const c = await view(box, ctx); clear(body, box); cleanup = c || null; } catch (e) { clear(body, el('div', { className: 'callout bad' }, e.message)); }
   }

@@ -48,6 +48,7 @@ RAM on a 16 GB M4 (estimate):
 | 15 | `lib/flow/policy.js`, `ORCH_V2_LOCAL_FAILS_BEFORE_CURSOR` (2) | soft reasons (files, diff_size, ...) jumped to Cursor -> attempt 1 ornith:9b (coder), attempt 2 qwen2.5-coder:7b (repair), then Cursor | Cursor use | `test/m38-policy.test.js` (M50) |
 | 16 | `ORCH_V2_LOCAL_MODELS` (after the saved coding and debugging role models) | `ornith:9b,qwen3.5:9b` -> `ornith:9b,qwen2.5-coder:7b` (qwen3.5:9b stays installed as an option) | qwen2.5-coder:7b is a code model with no thinking, 1.9 GB smaller | `ollama list` |
 | 17 | pipeline `switchModel` | unload only before local2 -> unload (keep_alive 0) on every model switch and before Cursor | two models resident on 16 GB | m38 (M50 switchModel) |
+| 18 | `lib/index/build.js`, `lib/db.js` | a task with no file list has nothing to search -> schema v8 stores one index per service (tree, symbols, import edges, folder summaries). A v2 task refreshes the structural index when the default branch has moved; summaries update on rebuild, and only for folders whose files changed | tasks #20-#37 explore the whole repo | `test/m55-project-index.test.js` |
 
 `ORCH_AIDER_EDIT_FORMAT` is unchanged. The auto choice is still `diff` for files of 4096 bytes or more and `whole` below that, and v2 steps always use `diff`.
 
