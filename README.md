@@ -55,7 +55,7 @@ Localhost-only (Host/Origin checks, no auth, so do not expose the port), authori
 ### Development
 
 ```bash
-npm test            # 560 tests on the author machine (560 pass, 0 fail, 0 skipped); fresh-clone/CI count is recorded after the pull-request run (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
+npm test            # 566 tests on the author machine (566 pass, 0 fail, 0 skipped); fresh-clone/CI count is recorded after the pull-request run (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
 npm run doctor      # same as ./setup.sh
 ```
 
@@ -304,7 +304,7 @@ Plain ES modules in `public/` (`index.html`, `style.css`, `app.js`, `js/*.js`), 
 * Toasts for results/errors, modals instead of `alert/confirm/prompt` (Esc, focus trap, type-to-confirm for deletes), skeleton and empty states, keyboard-friendly, responsive.
 * Screenshots: `docs/screens/`. Dev helpers: `scripts/dev-demo.js` (isolated seeded instance), `scripts/shot.sh` (headless Chrome screenshot), `scripts/ui-smoke.sh` (drives the UI over CDP).
 
-## Project index (schema v8)
+## Project index (schema v9)
 
 `lib/index/build.js` keeps one snapshot per service of the default-branch commit: file tree, exported symbols, relative import edges, `package.json` framework (NestJS, Express, Next), and a one-sentence summary per folder. The scan uses `git ls-tree` / `git show` on that commit, applies `.gitignore` and `.aiderignore`, and skips `node_modules`, `dist`, `build`, lockfiles and binaries. A rebuild rewrites only files whose git blob changed. Summaries are regenerated only for folders whose files changed, using the saved coding model (fallback `ornith:9b`, thinking off). Nothing is downloaded.
 
@@ -313,18 +313,20 @@ Plain ES modules in `public/` (`index.html`, `style.css`, `app.js`, `js/*.js`), 
 * `GET /api/services/:id/index/search?q=` matches symbol names, paths and summaries.
 * The project page has an **Index** tab. A v2 task rebuilds the structural index (no summary call) when it is missing or stale.
 * When the prompt has no `## Files` section and no pinned file list, `lib/flow/rank.js` picks the edit list from that index: symbol and path matches, folder-summary overlap, and import-graph neighbours as read-only snippets. A name introduced as a new enum is proposed beside an existing `*.enum.ts`. An explicit Files section still wins. The coder step keeps `--map-tokens 0` and only the chosen files. Snippets stop at about 60% of the local context (`lib/flow/reader.js`).
+* A rebuild also stores embeddings in `index_embeddings` when `nomic-embed-text` is already installed (`ORCH_INDEX_EMBED=0` skips this; `ORCH_INDEX_EMBED_MODEL` changes the model name). They are an extra ranking signal only. A task refresh does not embed, and ranking still works when the model is missing or the embed call fails. `lib/ollama.js` is the only module that calls Ollama (`POST /api/embed`).
 
-## Upgrading the schema (v4, v5, v6, v7, v8), backups and rollback
+## Upgrading the schema (v4, v5, v6, v7, v8, v9), backups and rollback
 
-* At startup an older DB is migrated automatically after a **consistent backup** `data/pre-v4-migration-<timestamp>.db` (v3 -> v4) and `data/pre-v5-migration-<timestamp>.db` (v4 -> v5) and `data/pre-v6-migration-<timestamp>.db` (v5 -> v6) and `data/pre-v7-migration-<timestamp>.db` (v6 -> v7) and `data/pre-v8-migration-<timestamp>.db` (v7 -> v8) (`VACUUM INTO`), each in one transaction (expand-only: nothing is dropped,
+* At startup an older DB is migrated automatically after a **consistent backup** `data/pre-v4-migration-<timestamp>.db` (v3 -> v4) and `data/pre-v5-migration-<timestamp>.db` (v4 -> v5) and `data/pre-v6-migration-<timestamp>.db` (v5 -> v6) and `data/pre-v7-migration-<timestamp>.db` (v6 -> v7) and `data/pre-v8-migration-<timestamp>.db` (v7 -> v8) and `data/pre-v9-migration-<timestamp>.db` (v8 -> v9) (`VACUUM INTO`), each in one transaction (expand-only: nothing is dropped,
   legacy columns stay). **v5** (M1) adds `cursor_usage.project_id/service_id` (back-filled from the tasks; rows of already-deleted tasks stay unattributed), rebuilds the tiny `model_roles` table so it also allows the roles `chat` and `embedding`,
   and creates the structures reserved for the next milestones in one go (`chat_conversations`, `chat_messages`, `features`, `task_artifacts`, `tasks.feature_id/feature_role/superseded_by`, `task_groups.feature_id/gate`) - nothing uses them yet. Existing projects become projects with one **legacy** service (whole repo) and keep their tasks.
   **v6** (M6) adds the attachment tables (`attachments`, `attachment_links`, `attachment_derivations`) and rebuilds `model_roles` once more so the CHECK also allows `image`, `video`, `audio`, `document` (reserved: `lib/models.js` lists a role only once it has a consumer). It is additive; `ORCH_TEST_FAIL_MIGRATION_V6=1` is the test-only failure-injection hook.
   **v7** adds optional `services.dev_branch`, `services.uat_branch` and `services.live_branch` (empty is allowed; a name must already exist as `refs/heads/<name>`), plus `tasks.flow` (default `v1`, so rows already in the database stay on v1) and `tasks.iteration` (default 1). UAT and live are protected: a merge into either needs an explicit confirm that names the source branch and the target branch. `ORCH_TEST_FAIL_MIGRATION_V7=1` is the test-only failure-injection hook.
   **v8** adds the project index tables (`index_meta`, `index_files`, `index_symbols`, `index_edges`, `index_summaries`), one current snapshot per service. Existing rows are not rewritten. `ORCH_TEST_FAIL_MIGRATION_V8=1` is the test-only failure-injection hook.
+  **v9** adds `index_embeddings` (one vector per file or folder, keyed by service, kind and path). Existing index rows are not rewritten. `ORCH_TEST_FAIL_MIGRATION_V9=1` is the test-only failure-injection hook.
   Earlier snapshots: `data/pre-projects-migration-*.db` (v0->v1).
 * **Rollback = restore the backup DB AND the old code together.** Older code refuses a newer DB ("schema vN is newer than this orchestrator"), and the new code cannot read an older DB without migrating it.
-  Steps: `./stop.sh`; `git checkout <old tag>`; copy the matching `pre-v8-migration-*.db` (to go back to v7 code), `pre-v7-migration-*.db` (v6 code), `pre-v6-migration-*.db` (v5 code), `pre-v5-migration-*.db` (v4 code) or `pre-v4-migration-*.db` (v3 code) over `data/orchestrator.db`; `./start.sh`. (Anything created after the migration is lost on rollback.)
+  Steps: `./stop.sh`; `git checkout <old tag>`; copy the matching `pre-v9-migration-*.db` (to go back to v8 code), `pre-v8-migration-*.db` (to go back to v7 code), `pre-v7-migration-*.db` (v6 code), `pre-v6-migration-*.db` (v5 code), `pre-v5-migration-*.db` (v4 code) or `pre-v4-migration-*.db` (v3 code) over `data/orchestrator.db`; `./start.sh`. (Anything created after the migration is lost on rollback.)
 * The test suite never touches the real data dir (`config.js` refuses real-dir fallbacks under `node --test`).
 * **The real DB is only opened by `node server.js`.** `config.js` hands out the default `data/orchestrator.db` to the server entry only (or with `ORCH_ALLOW_DEFAULT_DB=1`, on purpose) and never under `node --test` / `NODE_ENV=test`; a one-off `node -e "require('./lib/db')"`, a script or a tool must set `ORCH_DB` to a throw-away path or it fails with "refusing to open the real orchestrator DB" (`test/m15-db-guard.test.js`). Background: a stray `require` once opened and auto-migrated the live DB (a backup was made first).
 
@@ -420,6 +422,8 @@ The dashboard shows engine + model per task and a clear badge: **local** (green,
 | `ORCH_LOCAL_MAX_FILE_BYTES` | `65536` | tracked files above this size go into the generated aider ignore file (unless pinned) |
 | `ORCH_LOCAL_MAX_FILES` | `3` | more pinned files = multi-file task: refused by the local engine (engine `auto` then asks for the Cursor escalation). In flow v2 a prompt naming more files is split into a sequence |
 | `ORCH_SPLIT_AUTORUN` | on | v2 split sequences: the parent's one start approval runs every part in order. A part that fails stops the rest as `blocked`; a cancel stops the rest as `cancelled`. The parent result shows `done/total`. `0` leaves each part pending |
+| `ORCH_INDEX_EMBED` | on | store embeddings on an index rebuild when `ORCH_INDEX_EMBED_MODEL` is already installed. `0` skips them. Ranking does not need them |
+| `ORCH_INDEX_EMBED_MODEL` | `nomic-embed-text` | Ollama embedding model used by the project index |
 | `ORCH_LOCAL_MAP_TOKENS` / `ORCH_LOCAL_MAP_TOKENS_WITH_FILES` | `1024` / `512` | aider repo-map size without / with pinned files (was `0` = no map) |
 | `ORCH_AIDER_THINK` | `0` | `1` = let aider use the model's default thinking; by default aider gets `think: false` (model-settings file) for thinking-capable local models |
 | `ORCH_AIDER_EDIT_FORMAT` | unset (`diff`) | `whole`, `diff`, `udiff`, or `diff-fenced`. Unset or `diff` uses `whole` when a pinned file is missing or under 4096 bytes. Any other value refuses the local run |

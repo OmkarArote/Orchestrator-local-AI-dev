@@ -46,7 +46,7 @@ describe('M6 migration v5 -> v6, from a REAL v5 database', () => {
   it('migrates: data preserved, attachment tables + media roles present, FK + integrity clean, backup has the v5 shape', () => {
     const db = makeV5('a.db'); const before = counts(db);
     const roles = JSON.stringify(rows(db, 'SELECT role, model, options FROM model_roles ORDER BY role'));
-    assert.equal(openNew(db).v, 8);
+    assert.equal(openNew(db).v, 9);
     assert.deepEqual(counts(db), before, 'every row survives');
     assert.equal(JSON.stringify(rows(db, 'SELECT role, model, options FROM model_roles ORDER BY role')), roles);
     for (const t of ['attachments', 'attachment_links', 'attachment_derivations']) assert.equal(rows(db, `SELECT COUNT(*) c FROM sqlite_master WHERE type='table' AND name='${t}'`)[0].c, 1, t);
@@ -89,7 +89,7 @@ describe('M6 migration v5 -> v6, from a REAL v5 database', () => {
 
   it('is idempotent: re-opening a v6 database changes nothing and takes no further backup', () => {
     const db = path.join(dir, 'a.db'); const before = counts(db);
-    assert.equal(openNew(db).v, 8);
+    assert.equal(openNew(db).v, 9);
     assert.deepEqual(counts(db), before);
     assert.equal(fs.readdirSync(dir).filter((f) => f.startsWith('pre-v6-migration-')).length, 1);
   });
@@ -102,13 +102,13 @@ describe('M6 migration v5 -> v6, from a REAL v5 database', () => {
     assert.deepEqual(counts(db), before);
     assert.equal(rows(db, "SELECT COUNT(*) c FROM sqlite_master WHERE name='model_roles' AND sql LIKE '%''document''%'")[0].c, 0, 'model_roles was not rebuilt');
     assert.ok(fs.readdirSync(dir).some((f) => f.startsWith('pre-v6-migration-')), 'the backup was written before the attempt');
-    assert.equal(openNew(db).v, 8, 'clean retry');
+    assert.equal(openNew(db).v, 9, 'clean retry');
     assert.deepEqual(counts(db), before);
   });
 
   it('a brand-new database is created at v7 directly, without a backup', () => {
     const fresh = path.join(dir, 'fresh', 'orchestrator.db'); fs.mkdirSync(path.dirname(fresh));
-    assert.equal(openNew(fresh).v, 8);
+    assert.equal(openNew(fresh).v, 9);
     assert.equal(rows(fresh, "SELECT COUNT(*) c FROM sqlite_master WHERE name IN ('attachments','attachment_links','attachment_derivations')")[0].c, 3);
     assert.equal(fs.readdirSync(path.dirname(fresh)).filter((f) => f.startsWith('pre-v')).length, 0);
   });
@@ -124,7 +124,7 @@ describe('M6 migration v5 -> v6, from a REAL v5 database', () => {
     const boot = (dbPath) => spawn(process.execPath, ['--no-warnings', 'server.js'], { cwd: old5, env: envFor(dbPath, { ORCH_PORT: String(port), ORCH_POLL_MS: '100', ORCH_OLLAMA_REGISTRY: 'http://127.0.0.1:9', OLLAMA_API_BASE: 'http://127.0.0.1:9' }), stdio: ['ignore', 'pipe', 'pipe'] });
     let c = boot(db); let log = ''; c.stderr.on('data', (d) => (log += d)); c.stdout.on('data', (d) => (log += d));
     await new Promise((r) => c.on('exit', r));
-    assert.match(log, /schema v8 is newer than this orchestrator \(v5\)/);
+    assert.match(log, /schema v9 is newer than this orchestrator \(v5\)/);
     const restored = path.join(dbDir, 'restored.db'); fs.copyFileSync(backup, restored);
     c = boot(restored); log = ''; c.stdout.on('data', (d) => (log += d)); c.stderr.on('data', (d) => (log += d));
     let health = null;

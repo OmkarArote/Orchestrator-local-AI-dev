@@ -115,6 +115,9 @@ module.exports = {
   V2_LOCAL_FAILS_BEFORE_CURSOR: boundedInt('ORCH_V2_LOCAL_FAILS_BEFORE_CURSOR', env.ORCH_V2_LOCAL_FAILS_BEFORE_CURSOR, 2, 0, 10),
   // v2 split sequences: the parent's one start approval runs every part in order. 0 = each part stays pending.
   SPLIT_AUTORUN: env.ORCH_SPLIT_AUTORUN !== '0',
+  // Index embeddings are an extra ranking signal. Off with ORCH_INDEX_EMBED=0. The model is used only when it is already installed.
+  INDEX_EMBED: env.ORCH_INDEX_EMBED !== '0',
+  INDEX_EMBED_MODEL: env.ORCH_INDEX_EMBED_MODEL || 'nomic-embed-text',
   // hard timeouts (ms) for every subprocess
   AIDER_TIMEOUT_MS: num(env.ORCH_AIDER_TIMEOUT_MS, 20 * 60 * 1000),
   INSTALL_TIMEOUT_MS: num(env.ORCH_INSTALL_TIMEOUT_MS, 10 * 60 * 1000),

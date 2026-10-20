@@ -29,8 +29,8 @@ const msg = (cid) => store.chatAddMessage({ conversation_id: cid, role: 'user', 
 const project = () => store.createProject({ name: `p${++n}`, path: path.join(base, `p${n}`) });
 
 describe('M6 attachments: fresh DB + paths', () => {
-  it('a new database is at schema v7 with the attachment tables, and the attachments dir is next to the DB', () => {
-    assert.equal(store.schemaVersion(), 8);
+  it('a new database is at the current schema with the attachment tables, and the attachments dir is next to the DB', () => {
+    assert.equal(store.schemaVersion(), 9);
     assert.equal(cfg.ATTACH_DIR, path.join(base, 'data', 'attachments'));
     assert.ok(cfg.ownDirs().includes(cfg.ATTACH_DIR));
     assert.throws(() => att.blobPath('../../etc/passwd'), /invalid attachment hash/);
