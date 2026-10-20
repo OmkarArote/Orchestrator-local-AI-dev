@@ -263,3 +263,31 @@ describe('M50 tuning: local window and request cap', () => {
     assert.equal(stepSettingsYaml('ollama_chat/ornith:9b'), '- name: ollama_chat/ornith:9b\n  extra_params:\n    num_ctx: 16384\n    temperature: 0.1\n    top_p: 0.9\n    top_k: 20\n    repeat_penalty: 1.05\n    num_predict: 2048\n    seed: 42\n    think: false\n');
   });
 });
+
+describe('M51 saved roles win over the tuned fallback', () => {
+  const roles = require('../lib/flow/roles');
+  const row = (model, options) => ({ model, options, source: 'role' });
+  it('optionsFor: saved fields win, empty ones fall back; think defaults to false', () => {
+    const s = row('qwen2.5-coder:7b', { temperature: 0.25, top_k: 40, num_predict: '' });
+    const o = roles.optionsFor('coder', { savedRole: s });
+    assert.equal(o.temperature, 0.25); assert.equal(o.top_k, 40);
+    assert.equal(o.num_predict, 2048); assert.equal(o.seed, 42); assert.equal(o.repeat_penalty, 1.05);
+    assert.equal(roles.thinkFor('coder', { savedRole: s }), false);
+    assert.equal(roles.optionsFor('coder', { savedRole: null }).temperature, 0.1);
+  });
+  it('saved think:true is honoured for coder/repair and warns; other roles do not warn', () => {
+    const s = row('ornith:9b', { think: true });
+    assert.equal(roles.thinkFor('repair', { savedRole: s }), true);
+    assert.match(roles.thinkWarning('coder', { savedRole: s }), /saved 'coding' role has think:true/);
+    assert.match(roles.thinkWarning('repair', { savedRole: s }), /saved 'debugging' role/);
+    assert.equal(roles.thinkWarning('planner', { savedRole: s }), null);
+    assert.equal(roles.thinkWarning('coder', { savedRole: row('ornith:9b', {}) }), null);
+    assert.equal(roles.chatFields('coder', { savedRole: s }).think, true);
+  });
+  it('modelFor: an installed saved model wins; a missing one falls back to the chain', () => {
+    assert.equal(roles.modelFor('coder', ['ornith:9b', 'qwen2.5-coder:7b'], { savedRole: row('qwen2.5-coder:7b', {}) }), 'qwen2.5-coder:7b');
+    assert.equal(roles.modelFor('coder', ['ornith:9b'], { savedRole: row('qwen2.5-coder:7b', {}) }), 'ornith:9b');
+    const { stepSettingsYaml } = require('../lib/flow/coder');
+    assert.match(stepSettingsYaml('ollama_chat/x', 'coder', { savedRole: row('x', { temperature: 0.2, think: true }) }), /temperature: 0\.2\n[\s\S]*think: true\n$/);
+  });
+});

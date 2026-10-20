@@ -31,11 +31,22 @@ describe('M28 aider think:false for thinking models', () => {
     await S.post('/models/roles/clear', { role: 'coding' });
   });
 
-  it('a stored coding-role think option is validated (warning) but sent as think:false unless ORCH_AIDER_THINK=1', async () => {
+  it('a saved coding-role think option wins, is validated, and the task log warns', async () => {
     const r = await S.post('/models/roles', { role: 'coding', model: 'ornith:9b', options: { think: 'low' } });
     assert.ok((r.warnings || []).some((w) => /passed to aider/.test(w)));
-    await S.runToReview(P.id, { title: 'c', prompt: 'edit', files: ['a.txt'], engine: 'local' });
-    assert.equal(lastAider(S).settings, '- name: ollama_chat/ornith:9b\n  extra_params:\n    num_ctx: 16384\n    temperature: 0.1\n    top_p: 0.9\n    top_k: 20\n    repeat_penalty: 1.05\n    num_predict: 2048\n    seed: 42\n    think: false\n');
+    const t = await S.runToReview(P.id, { title: 'c', prompt: 'edit', files: ['a.txt'], engine: 'local' });
+    assert.equal(lastAider(S).settings, '- name: ollama_chat/ornith:9b\n  extra_params:\n    num_ctx: 16384\n    temperature: 0.1\n    top_p: 0.9\n    top_k: 20\n    repeat_penalty: 1.05\n    num_predict: 2048\n    seed: 42\n    think: "low"\n');
+    const evs = (await S.get(`/tasks/${t.id}/events`)).map((e) => e.message).join('\n');
+    assert.match(evs, /warning: saved 'coding' role has think:"low"/);
+    await S.post('/models/roles/clear', { role: 'coding' });
+  });
+
+  it('M51: saved role values win field by field; empty fields fall back to the tuned coder values', async () => {
+    await S.post('/models/roles', { role: 'coding', model: 'ornith:9b', options: { temperature: 0.3, num_ctx: 12288, think: false } });
+    const t = await S.runToReview(P.id, { title: 'd', prompt: 'edit', files: ['a.txt'], engine: 'local' });
+    assert.equal(lastAider(S).settings, '- name: ollama_chat/ornith:9b\n  extra_params:\n    num_ctx: 12288\n    temperature: 0.3\n    top_p: 0.9\n    top_k: 20\n    repeat_penalty: 1.05\n    num_predict: 2048\n    seed: 42\n    think: false\n');
+    const evs = (await S.get(`/tasks/${t.id}/events`)).map((e) => e.message).join('\n');
+    assert.doesNotMatch(evs, /warning: saved 'coding' role has think/);
     await S.post('/models/roles/clear', { role: 'coding' });
   });
 
