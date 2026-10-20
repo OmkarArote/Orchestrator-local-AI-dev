@@ -52,7 +52,7 @@ function paint(body, data) {
 
 export function lineageCard(id) {
   const body = el('div', { className: 'ln-body' }, el('div', { className: 'small dim' }, 'Loading lineage…'));
-  const box = el('details', { className: 'callout lineage', open: true }, el('summary', {}, el('b', {}, 'Lineage')), body);
+  const box = el('section', { className: 'card lineage' }, el('h3', {}, 'Lineage'), body);
   let timer = null;
   let last = '';
   let busy = false;

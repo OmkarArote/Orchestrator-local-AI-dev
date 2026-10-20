@@ -67,7 +67,7 @@ Unset `ORCH_FLOW`, or `ORCH_FLOW=v2`, selects v2. `ORCH_FLOW=v1` keeps the old f
 
 The local fallback order is `ornith:9b`, then `qwen3.5:9b` when that model is already installed, then Cursor (`ORCH_V2_LOCAL_MODELS`). Nothing is downloaded. After `ORCH_V2_CURSOR_RUNS` Cursor runs in one task (default 3), the task fails with reason `budget`.
 
-`bin/orc.js` is an HTTP client (`package.json` `bin.orc`). It does not open the database. `orc do` waits until the task is `review` or `failed`. `orc review <id>` prints the task plus `GET /api/tasks/:id/lineage`. The task page shows that lineage as a vertical timeline (plan, step, attempt, repair, escalation, merge), with an engine badge, status, duration, and the escalation chain on the step. It refreshes while the task is approved, running, or checking. The timeline is built from `task_events`.
+`bin/orc.js` is an HTTP client (`package.json` `bin.orc`). It does not open the database. `orc do` waits until the task is `review` or `failed`. `orc review <id>` prints the task plus `GET /api/tasks/:id/lineage`. The task page shows that lineage as a vertical timeline on the right (plan, step, attempt, repair, escalation, merge), next to the service, branch, files, and check, with an engine badge, status, duration, and the escalation chain on the step. It refreshes while the task is approved, running, or checking. The timeline is built from `task_events`.
 
 ```bash
 ORCH_FLOW=v2 ORCH_PORT=4311 ORCH_DB=/tmp/v2.db node server.js
@@ -499,7 +499,9 @@ All endpoints are on `http://127.0.0.1:<port>`. POSTs need `Content-Type: applic
 | `GET /api/tasks/:id/diff` | - | `{stat, diff, truncated, note}` of `<default branch>...branch` |
 | `POST /api/tasks/:id/approve-start` / `reject-start` | `{reason?}` / `{reason}` | `pending` -> `approved` / `rejected` |
 | `POST /api/tasks/:id/approve-escalation` / `reject-escalation` | `{reason?}` / `{reason}` | from `awaiting_escalation` |
-| `POST /api/tasks/:id/approve-merge` / `reject-merge` | `{reason?, override_reason?}` / `{reason}` | from `review`: guarded `git merge --no-ff` in the task's project (a feature consumer is refused with 409 until its provider is merged, unless a typed `override_reason` is sent) / `rejected` |
+| `POST /api/tasks/:id/approve` | `{reason?}` | from `review`: accept the task and move it to `done` without merging. The default branch and the checkout are not touched. Merge into a configured dev, uat, or live branch is still available |
+| `POST /api/tasks/:id/approve-merge` / `reject-merge` | `{reason?, override_reason?}` / `{reason}` | from `review`: guarded `git merge --no-ff` in the task's project (a feature consumer is refused with 409 until its provider is merged, unless a typed `override_reason` is sent) / `rejected`. `reject-merge` keeps the branch and the worktree |
+| `POST /api/tasks/:id/reject` | `{reason}` | from `failed`: mark the task `rejected` and delete its local `ai/task-<id>` branch after removing the worktree. The default branch, dev, uat, and live are never deleted. Nothing is pushed |
 | `POST /api/tasks/:id/follow-up` | `{instruction}` | from `review` or `done`: start another iteration on the same task branch. The previous diff, plan, and lineage go with the instruction. It returns to `review`. Nothing is merged |
 | `POST /api/tasks/:id/merge-to` | `{role, confirm?, source?, target?}` | from `review` or `done`: merge into the service's configured `dev`, `uat`, or `live` branch in a temporary worktree, then fast-forward that ref only if the check passes. UAT and live need `confirm: true` plus the source and target names. Nothing is pushed |
 | `POST /api/tasks/:id/push-target` | `{role}` | push the configured branch to `origin` after `merge-to` succeeded. Never `--force` |
@@ -516,8 +518,10 @@ curl -s -X POST -H 'Content-Type: application/json' http://127.0.0.1:4310/api/ta
 
 ```
  pending --approve-start--> approved --> running --> checking --> review --approve-merge--> done
-    |                                       |           |           |
-    +--reject-start--> rejected             +-----------+--> failed +--reject-merge--> rejected
+    |                                       |           |              |         +--approve (no merge)--> done
+    +--reject-start--> rejected             +-----------+--> failed  +--reject-merge (keeps the branch)--> rejected
+                                                    |
+                                                    +--reject (deletes the task branch)--> rejected
                                   (engine=auto, local failed, allow_escalation)
                                             +-----------+--> awaiting_escalation --approve--> approved --> running (cursor) ...
                                                                      +--reject--> rejected
@@ -530,15 +534,15 @@ curl -s -X POST -H 'Content-Type: application/json' http://127.0.0.1:4310/api/ta
 | `approved` | start (or escalation) approved; waiting for the single runner |
 | `running` / `checking` | engine is editing / install + check command running (the advisory review also happens in `checking`) |
 | `awaiting_escalation` | local attempt failed; waiting for a human decision on running Cursor (Cursor **not** invoked) |
-| `review` | engine ok **and** check passed **and** the branch has changes; waiting for a human merge decision |
-| `done` | merge approved and the guarded merge succeeded |
+| `review` | engine ok **and** check passed **and** the branch has changes; waiting for a human to approve it or merge it |
+| `done` | accepted. `approve-merge` also merged the branch into the default branch. `approve` left that branch unchanged |
 | `failed` | engine failed/timed out, check failed/timed out, no changes, cancelled, restart mid-run, escalation blocked/not allowed. Changes are still committed on the branch (`[aider failed]`, `[cursor failed]`, `[check failed]`, `[cancelled]`) |
-| `rejected` | a human rejected the start, the escalation, or the merge |
+| `rejected` | a human rejected the start, the escalation, the merge, or a failed task. Rejecting a failed task also deletes that task's local branch |
 
 ## Safety properties
 
 - **Localhost only**: binds `127.0.0.1` (hard-coded); `Host` must be `127.0.0.1:<port>`/`localhost:<port>` (403 otherwise); POSTs with a foreign `Origin` get 403 and must be `application/json`.
-- **Never auto-merges**: a human calls `approve-merge` (into the service default branch, and only when that checkout is on the branch and clean) or `merge-to` (into a configured dev, uat, or live branch, in a temporary worktree). UAT and live also need a confirm that names both branches. A failed `merge-to` leaves the target at the sha recorded before the attempt. Nothing is force-pushed. AI review is advisory only.
+- **Never auto-merges**: a human calls `approve-merge` (into the service default branch, and only when that checkout is on the branch and clean), `approve` (accepts the task and does not merge), or `merge-to` (into a configured dev, uat, or live branch, in a temporary worktree). UAT and live also need a confirm that names both branches. A failed `merge-to` leaves the target at the sha recorded before the attempt. Nothing is force-pushed. AI review is advisory only.
 - **Human gates**: before start, before merge, and (default) before escalating to Cursor.
 - **Worktree isolation**: every task runs in its own `git worktree` on `ai/task-<id>`; neither aider nor Cursor is ever pointed at the project's main checkout (explicit guard for Cursor).
 - **Cursor is sandboxed and approval-only**: `--sandbox enabled`, `--workspace <worktree>`, hard timeout, process-group kill, usage counters (no cap), no prompt for secrets; nothing runs on Cursor unless the task's engine says so (or an approved escalation).
@@ -656,7 +660,7 @@ Use `ORCH_CURSOR_BIN=<stub>`, `ORCH_OPEN_DRY_RUN=1`, `ORCH_OSASCRIPT_BIN=<stub>`
 ## Known limitations
 
 - No automatic retry; a failed task must be re-created as a new task.
-- **Worktree and branch are kept on reject-merge, rejection and failure** (for inspection); only a successful merge removes the worktree. No cleanup endpoint - remove manually: `git worktree remove --force <path>` and `git branch -D ai/task-<id>` in the project repo. Branches are never deleted, even after merge.
+- **Worktree and branch are kept on reject-merge and on failure** (for inspection). A successful merge removes the worktree and keeps the branch. Rejecting a failed task (`POST /api/tasks/:id/reject`) removes the worktree and deletes that task's local branch. Other branches are never deleted.
 - Local tasks run one at a time across all projects; up to `ORCH_MAX_PARALLEL_CURSOR` Cursor tasks run in parallel (see Sequences); no queue priorities.
 - The 9B local model can ignore the prompt or return a file unchanged. The local engine defaults to edit format `diff` (`ORCH_AIDER_EDIT_FORMAT`); a pinned file under 4 KB, or a pinned file that does not exist yet, falls back to `whole`. Aider scratch (`.aider*`, including `.aider.tags.cache.v4/`) is listed in the worktree exclude and the generated ignore file, and is dropped in `commitIfChanged`. A run whose only changes are those files is not committed.
 - A task only passes if the check command exits 0; the default `npm run build` proves it compiles, not that behaviour is correct. Review the diff.

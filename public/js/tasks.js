@@ -189,9 +189,10 @@ function overrideForm(t, o, rerender) {
 
 async function renderDetail(pane, id, { stream, tab: startTab }) {
   let sig = '', tab = 'log', term = null, timer = null, diffLoaded = false;
-  const head = el('div', { className: 'stack' }); const logHost = el('div'); const diffHost = el('div', { style: { display: 'none' } });
+  const head = el('div', { className: 'stack' }); const side = el('aside', { className: 'task-side stack', 'aria-label': 'Task details' });
+  const logHost = el('div'); const diffHost = el('div', { style: { display: 'none' } });
   const tabLog = el('button', { className: 'on', textContent: 'Live log', onclick: () => setTab('log') }), tabDiff = el('button', { textContent: 'Diff', onclick: () => setTab('diff') });
-  clear(pane, head, el('div', { className: 'tabs mt' }, tabLog, tabDiff), logHost, diffHost);
+  clear(pane, el('div', { className: 'task-detail' }, el('div', { className: 'task-main stack' }, head, el('div', { className: 'tabs mt' }, tabLog, tabDiff), logHost, diffHost), side));
   term = terminal(id, { stream }); logHost.append(term.node);
   function setTab(t) { tab = t; logHost.style.display = t === 'log' ? '' : 'none'; diffHost.style.display = t === 'diff' ? '' : 'none'; tabLog.className = t === 'log' ? 'on' : ''; tabDiff.className = t === 'diff' ? 'on' : ''; if (t === 'diff') loadDiff(); }
   async function loadDiff() { clear(diffHost, skeletonLines(5)); try { renderDiff(diffHost, await api(`/tasks/${id}/diff`)); } catch (e) { clear(diffHost, el('div', { className: 'callout bad' }, e.message)); } }
@@ -200,7 +201,7 @@ async function renderDetail(pane, id, { stream, tab: startTab }) {
   api(`/tasks/${id}`).then(async (d) => { attInfo = d; await loadServices(d.project_id); draw(true); }).catch(() => {});
   function draw(force) {
     const t = S.tasks.find((x) => x.id === id);
-    if (!t) { clear(head, empty({ icon: '?', title: `Task #${id} not found`, text: 'It may have been deleted with its project.' })); return; }
+    if (!t) { clear(side); clear(head, empty({ icon: '?', title: `Task #${id} not found`, text: 'It may have been deleted with its project.' })); return; }
     const s = JSON.stringify([t, mpOf(t), (S.svc[t.project_id] || []).length, S.cfg && S.cfg.router]);
     if (!force && s === sig && head.childNodes.length) return; sig = s;
     const p = project(t.project_id);
@@ -210,17 +211,19 @@ async function renderDetail(pane, id, { stream, tab: startTab }) {
       el('div', { className: 'row' }, el('h2', {}, `#${t.id} ${t.title}`), statusBadge(t.status)),
       el('div', { className: 'row' }, ...taskBadges(t), isCloud(t) ? badge('runs on Cursor servers (uses Pro usage)', 'cloud') : badge(`local: aider + ollama on this Mac${S.cfg ? ' (' + S.cfg.local_model + ')' : ''}`, 'e-local nodot'),
         t.engine_used ? chip('engine used: ' + t.engine_used) : null, t.allow_escalation ? chip('escalation allowed') : null, t.ai_review ? chip(`AI review (${t.review_model || 'auto'})`) : null),
+      el('pre', { className: 'plain' }, t.prompt),
+    ];
+    const facts = [
       el('dl', { className: 'kv small' }, el('dt', {}, 'Service'), el('dd', {}, t.service_name ? t.service_name + (svcPath && svcPath !== '.' ? ` (${svcPath})` : '') : '-'), el('dt', {}, 'Branch'), el('dd', {}, t.branch ? el('code', {}, t.branch) : '-'),
         el('dt', {}, 'Files'), el('dd', {}, t.files.join(', ') || '-'), el('dt', {}, 'Check'), el('dd', {}, t.check_cmd || `${t.service_name ? 'service/' : ''}project default (${p ? p.check_cmd : '?'})`), t.head_sha ? [el('dt', {}, 'Head'), el('dd', {}, el('code', {}, t.head_sha.slice(0, 10)))] : null),
-      el('pre', { className: 'plain' }, t.prompt),
-      lineageCard(t.id),
-      attInfo && attInfo.attachments && attInfo.attachments.length ? el('div', { className: 'small' }, `sent to Cursor: ${attInfo.sent_to_cursor ? 'yes' : 'no'}`) : null,
     ];
-    if (t.context) kids.push(el('div', { className: 'small dim' }, `context bundle given to the engine: ${t.context.total_chars}/${t.context.max_chars} chars (${t.context.parts.map((x) => x.name + (x.truncated ? '*' : '')).join(', ')}); file: ${shortPath(t.context.file)}`));
-    const rc = routingCard(t); if (rc) kids.push(rc);
+    if (t.context) facts.push(el('div', { className: 'small dim' }, `context bundle given to the engine: ${t.context.total_chars}/${t.context.max_chars} chars (${t.context.parts.map((x) => x.name + (x.truncated ? '*' : '')).join(', ')}); file: ${shortPath(t.context.file)}`));
+    if (t.group_id) facts.push(el('div', { className: 'small dim' }, `Part of sequence #${t.group_id}, step ${t.step_no}${t.base_ref ? '; built on top of ' + t.base_ref : ''}. Diff compares against ${t.base_ref || 'the default branch'}. `, el('a', { href: `#/projects/${t.project_id}/sequences` }, 'open sequences')));
+    if (attInfo && attInfo.attachments && attInfo.attachments.length) facts.push(el('div', { className: 'small' }, `sent to Cursor: ${attInfo.sent_to_cursor ? 'yes' : 'no'}`));
+    const sideKids = [el('div', { className: 'card stack' }, el('h3', {}, 'Details'), ...facts), lineageCard(t.id)];
+    const rc = routingCard(t); if (rc) sideKids.splice(1, 0, rc);
     if (t.result_summary) kids.push(el('div', { className: 'callout' }, el('b', {}, 'Result: '), t.result_summary));
     if (t.supervised) kids.push(el('div', { className: 'callout warn' }, "SUPERVISED: a hands-on session (Cursor IDE / CLI) is open on this task's worktree. The runner is paused for it; merge and approvals are blocked. Edit as you like, then click Release: the orchestrator runs the check and commits the worktree state on the task branch (\u2192 review)."));
-    if (t.group_id) kids.push(el('div', { className: 'small dim' }, `Part of sequence #${t.group_id}, step ${t.step_no}${t.base_ref ? '; built on top of ' + t.base_ref : ''}. Diff compares against ${t.base_ref || 'the default branch'}. `, el('a', { href: `#/projects/${t.project_id}/sequences` }, 'open sequences')));
     if (t.status === 'awaiting_escalation') kids.push(el('div', { className: 'callout warn' }, `Local attempt failed. Escalate to Cursor (model ${t.model || 'auto'})? This runs on Cursor servers and uses your Pro usage. Nothing has been sent to Cursor yet.`));
     if (t.plan_text) {
       const pc = el('div', { className: 'callout plan stack' }, el('b', {}, `Cursor plan (${t.plan_state}${t.model_used ? ', model ' + t.model_used : ''})`));
@@ -258,7 +261,11 @@ async function renderDetail(pane, id, { stream, tab: startTab }) {
     }
     if (t.status === 'awaiting_plan' && !sup) { act('Approve plan & implement', 'ok', 'approve-plan', { ask: 'Run the implementation with Cursor now (a second Cursor run; uses Pro usage)?', body: () => (planEdit[t.id] !== undefined && planEdit[t.id] !== t.plan_text ? { plan: planEdit[t.id] } : {}) }); act('Reject plan', 'bad', 'reject-plan', { reason: true }); }
     if (t.status === 'awaiting_escalation' && !sup) { act('Approve escalation to Cursor', 'ok', 'approve-escalation', { ask: 'Run this task on Cursor servers (uses Pro usage)?' }); act('Reject escalation', 'bad', 'reject-escalation', { reason: true }); }
-    if (t.status === 'review' && !sup) { act(`Approve & merge into ${base}`, 'ok', 'approve-merge', { ask: `Merge ${t.branch} into ${base} with --no-ff in ${t.service_name ? 'the repository of service ' + t.service_name : 'the project repo'}?` }); act('Reject', 'bad', 'reject-merge', { reason: true }); }
+    if (t.status === 'review' && !sup) {
+      act('Approve', 'sec', 'approve', { ask: `Approve this task without merging into ${base}? ${base} is not changed.` });
+      act(`Approve & merge into ${base}`, 'ok', 'approve-merge', { ask: `Merge ${t.branch} into ${base} with --no-ff in ${t.service_name ? 'the repository of service ' + t.service_name : 'the project repo'}?` });
+      act('Reject', 'bad', 'reject-merge', { reason: true });
+    }
     if (['review', 'done'].includes(t.status) && !sup) {
       const svc = (S.svc[t.project_id] || []).find((x) => x.id === t.service_id);
       for (const [role, branch] of [['dev', svc && svc.dev_branch], ['uat', svc && svc.uat_branch], ['live', svc && svc.live_branch]]) {
@@ -271,6 +278,7 @@ async function renderDetail(pane, id, { stream, tab: startTab }) {
         act(`Push ${branch}`, 'ghost', 'push-target', { ask: `Push ${branch} to origin? This is a normal push, never a force-push.`, body: () => ({ role }) });
       }
     }
+    if (t.status === 'failed' && !sup) act('Reject', 'bad', 'reject', { reason: true, danger: true, ask: t.branch ? `Reject this failed task and delete local branch ${t.branch}? ${base} is not touched. Nothing is pushed.` : 'Reject this failed task? It has no branch to delete.' });
     if (['failed', 'rejected'].includes(t.status)) row.append(el('button', { className: 'btn primary', textContent: 'Re-run', title: 'Creates a new pending task with the same title, prompt, service and engine. You still approve its start.', onclick: async (e) => {
       await busy(e.currentTarget, async () => { try { const nt = await api(`/tasks/${t.id}/rerun`, {}); toast(`task #${nt.id} created as a re-run of #${t.id} (waiting for your approval)`, 'ok'); await loadTasks(); location.hash = `#/tasks/${nt.id}`; } catch (er) { toastError(er); } });
     } }));
@@ -297,6 +305,7 @@ async function renderDetail(pane, id, { stream, tab: startTab }) {
       } })));
     }
     clear(head, ...kids);
+    clear(side, ...sideKids);
   }
   draw(true);
   if (startTab === 'diff') setTab('diff');
@@ -315,7 +324,7 @@ export async function render(main, route) {
   const list = el('div', { className: 'list' }); const detail = el('div', { className: 'pane' });
   const newBtn = el('button', { className: 'btn', textContent: '+ New task', onclick: () => newTaskModal() });
   main.append(el('div', { className: 'page-head' }, el('div', { className: 'grow' }, el('h1', {}, 'Tasks'), el('p', {}, 'Every change is a task on its own branch. Nothing starts or merges without your approval.')), newBtn),
-    el('div', { className: 'split' }, el('div', { className: 'pane' }, el('div', { className: 'row mb' }, el('div', { style: { flex: 1, minWidth: '140px' } }, projSel), seg), list), detail));
+    el('div', { className: 'split task-page' }, el('div', { className: 'pane' }, el('div', { className: 'row mb' }, el('div', { style: { flex: 1, minWidth: '140px' } }, projSel), seg), list), detail));
   const drawSeg = () => clear(seg, ...FILTERS.map(([k, l]) => el('button', { className: filter === k ? 'on' : '', textContent: l, onclick: () => { filter = k; sessionStorage.setItem('taskFilter', k); drawSeg(); drawList(); } })));
   projSel.onchange = () => { setProjectFilter(projSel.value); drawList(); };
   function drawList() {

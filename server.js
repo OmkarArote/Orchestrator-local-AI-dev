@@ -5,7 +5,7 @@ const path = require('node:path');
 const cfg = require('./config');
 const store = require('./lib/db');
 const runner = require('./lib/runner');
-const { taskDiff, mergeTask, mergePreflight, removeWorktree } = require('./lib/git-ops');
+const { taskDiff, mergeTask, mergePreflight, removeWorktree, discardTaskBranch } = require('./lib/git-ops');
 const projects = require('./lib/projects');
 const cursor = require('./lib/cursor');
 const { git } = require('./lib/proc');
@@ -482,14 +482,19 @@ async function mergePlan(group) {
   const steps = [];
   for (const t of store.groupTasks(group.id)) {
     const base = { task_id: t.id, step_no: t.step_no, title: t.title, status: t.status, service_id: t.service_id, service_name: t.service_name, branch: t.branch || null };
-    if (t.status !== 'review') { steps.push({ ...base, mergeable: false, state: t.status === 'done' ? 'merged' : t.status, problem: t.status === 'done' ? null : `status is '${t.status}' (needs 'review')` }); continue; }
+    if (t.status !== 'review') {
+      const merged = store.mergedToDefault(t);
+      const accepted = t.status === 'done' && !merged;
+      steps.push({ ...base, mergeable: false, state: merged ? 'merged' : accepted ? 'approved' : t.status, problem: merged ? null : accepted ? 'approved without merging into the default branch' : `status is '${t.status}' (needs 'review')` });
+      continue;
+    }
     const pf = await mergePreflight(t);
     steps.push({ ...base, repo: pf.repo, base_branch: pf.base || null, tip: pf.tip || null, mergeable: pf.ok, state: pf.ok ? 'ready' : 'blocked', problem: pf.ok ? null : pf.message });
   }
   const repos = {};
   for (const s of steps) if (s.repo) (repos[s.repo] = repos[s.repo] || []).push(s.task_id);
   return { group_id: group.id, title: group.title, dependency: group.dependency, cross_repo: Object.keys(repos).length > 1, repos: Object.entries(repos).map(([path, task_ids]) => ({ path, task_ids })), steps,
-    all_ready: steps.length > 0 && steps.every((s) => s.mergeable || s.state === 'merged') && steps.some((s) => s.mergeable),
+    all_ready: steps.length > 0 && steps.every((s) => s.mergeable || s.state === 'merged' || s.state === 'approved') && steps.some((s) => s.mergeable),
     note: 'There is no atomic cross-repository merge. Merge each task with its own approval (POST /api/tasks/:id/approve-merge); if one fails the others stay merged/reviewable and nothing is reverted automatically.' };
 }
 
@@ -822,6 +827,16 @@ async function api(req, res, url) {
       if (!r.ok) return fail(res, r.status || 409, r.message);
       return sendJson(res, 200, { ...store.getTask(id), push: r.message });
     }
+    case 'approve': {
+      if (task.status !== 'review') return fail(res, 409, `cannot approve: status is '${task.status}' (needs 'review')`);
+      if (task.supervised) return fail(res, 409, 'task is supervised (hands-on session open): click Release first so the check runs and the current worktree state is committed');
+      const svc = task.service_id ? store.getService(task.service_id) : null;
+      const baseName = (svc && svc.default_branch) || 'the default branch';
+      if (!store.transition(id, 'review', 'done', { result_summary: `${task.result_summary || ''}; approved without merging into ${baseName}` })) return fail(res, 409, 'status changed');
+      store.addEvent(id, 'system', `approved by human without merging into ${baseName} (branch ${task.branch || '(none)'} kept; nothing was merged)`);
+      features.refresh(task.feature_id);
+      return sendJson(res, 200, store.getTask(id));
+    }
     case 'approve-merge': {
       if (task.status !== 'review') return fail(res, 409, `cannot merge: status is '${task.status}' (needs 'review')`);
       if (task.supervised) return fail(res, 409, 'task is supervised (hands-on session open): click Release first so the check runs and the current worktree state is committed');
@@ -845,6 +860,21 @@ async function api(req, res, url) {
       store.addEvent(id, 'git', r.message);
       store.addEvent(id, 'git', await removeWorktree(task));
       return sendJson(res, 200, { ...store.getTask(id), merge: r.message });
+    }
+    case 'reject': {
+      if (!reason) return fail(res, 400, 'reason required');
+      if (task.status !== 'failed') return fail(res, 409, `cannot reject: status is '${task.status}' (needs 'failed')`);
+      if (task.supervised) return fail(res, 409, 'task is supervised (hands-on session open): click Release first');
+      const d = await discardTaskBranch(task);
+      if (!d.ok) {
+        store.addEvent(id, 'error', `reject refused: ${d.message}`);
+        return fail(res, 409, d.message);
+      }
+      if (!store.transition(id, 'failed', 'rejected', { result_summary: `${task.result_summary || ''}; rejected: ${reason}`, worktree_path: null })) return fail(res, 409, 'status changed');
+      store.addEvent(id, 'git', d.message);
+      store.addEvent(id, 'system', `rejected: ${reason}`);
+      features.refresh(task.feature_id);
+      return sendJson(res, 200, { ...store.getTask(id), discarded: d.message });
     }
     case 'reject-merge': {
       if (!reason) return fail(res, 400, 'reason required');
