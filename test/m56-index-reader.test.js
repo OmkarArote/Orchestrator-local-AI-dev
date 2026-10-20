@@ -70,6 +70,20 @@ describe('index rank', () => {
     assert.ok(paths(r).includes('src/validationSchemas/book.schema.js'));
   });
 
+  it('a short visit prompt keeps visit files and skips generic list and check methods', () => {
+    const extra = {
+      files: [...VISIT.files, { path: 'src/modules/health/health.controller.ts' }, { path: 'src/modules/user/user.service.ts' }],
+      symbols: [
+        ...VISIT.symbols,
+        { path: 'src/modules/health/health.controller.ts', name: 'check', kind: 'function', line: 1 },
+        { path: 'src/modules/user/user.service.ts', name: 'list', kind: 'function', line: 1 },
+      ],
+    };
+    const r = rankIndex({ ...VISIT, ...extra, prompt: 'Add a fixed Visit Outcome list with OTHER and a custom sub-outcome on visit check-out; add an outcome filter to the visit list\n' });
+    for (const p of [SCHEMA, DTO, SERVICE, ENUM]) assert.ok(paths(r).includes(p), paths(r).join(', '));
+    assert.equal(paths(r).some((p) => /health|user\.service|book|catalogue/i.test(p)), false, paths(r).join(', '));
+  });
+
   it('an explicit Files section wins over the index', () => {
     const r = rankIndex({ ...VISIT, prompt: PROMPT });
     assert.equal(r.source, 'files-section');
