@@ -42,28 +42,28 @@ describe('M29 aider request (server)', () => {
   });
   after(async () => { await S.stop(); });
 
-  it('do-not-open list: stripped from the message, in the ignore file with defaults + oversized files; pinned files re-allowed; repo map 1024', async () => {
+  it('do-not-open list: stripped from the message, in the ignore file with defaults + oversized files; pinned files re-allowed; repo map 512', async () => {
     const t = await S.runToReview(P.id, { title: 'x', prompt: 'Change a.txt.\nDo not open these files:\n- package-lock.json, README.md\n', files: ['a.txt', 'README.md'], engine: 'local' });
     const rec = lastAider(S);
     assert.doesNotMatch(rec.message, /package-lock/); assert.match(rec.message, /excluded from this run by the aider ignore file/);
-    assert.equal(argAfter(rec, '--map-tokens'), '1024');
+    assert.equal(argAfter(rec, '--map-tokens'), '512');
     const ig = rec.aiderignore;
     for (const l of ['package-lock.json', 'README*', '*.map', '.env*', '/big.json', '!/a.txt', '!/README.md']) assert.ok(ig.split('\n').includes(l), `${l} in ignore file`);
     assert.ok(!argAfter(rec, '--aiderignore').startsWith(t.worktree_path), 'ignore file lives outside the worktree');
     assert.match(await evText(S, t.id), /moved a "do not open" list out of the message \(2 path\(s\)/);
   });
 
-  it('no pinned files: 2048-token repo map and a clear warning', async () => {
+  it('no pinned files: 1024-token repo map and a clear warning', async () => {
     const t = await S.runToReview(P.id, { title: 'y', prompt: 'edit something', engine: 'local' });
-    assert.equal(argAfter(lastAider(S), '--map-tokens'), '2048');
-    assert.match(await evText(S, t.id), /no files pinned - the model only sees a 2048-token repo map/);
+    assert.equal(argAfter(lastAider(S), '--map-tokens'), '1024');
+    assert.match(await evText(S, t.id), /no files pinned - the model only sees a 1024-token repo map/);
   });
 
   it('too many pinned files: refused locally; engine=auto goes to the (approval-gated) escalation', async () => {
-    const files = ['a.txt', 'b.txt', 'c.txt', 'd.txt', 'e.txt', 'f.txt'];
+    const files = ['a.txt', 'b.txt', 'c.txt', 'd.txt'];
     const n = fs.readFileSync(path.join(S.base, 'stub-aider.log'), 'utf8').trim().split('\n').length;
     const t = await S.runToReview(P.id, { title: 'z', prompt: 'edit', files, engine: 'local' }, 'failed');
-    assert.match(t.result_summary, /aider: REFUSED \(6 pinned files > ORCH_LOCAL_MAX_FILES=5/);
+    assert.match(t.result_summary, /aider: REFUSED \(4 pinned files > ORCH_LOCAL_MAX_FILES=3/);
     const t2 = await S.runToReview(P.id, { title: 'z2', prompt: 'edit', files, engine: 'auto', allow_escalation: true }, 'awaiting_escalation');
     assert.equal(t2.escalation, 'pending');
     assert.equal(fs.readFileSync(path.join(S.base, 'stub-aider.log'), 'utf8').trim().split('\n').length, n, 'aider never started');

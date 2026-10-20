@@ -51,7 +51,17 @@ function expectedBaseMap(raw) {
   return out;
 }
 
+// local model window and reply budget (one place, so the request cap below always fits inside the window)
+const LOCAL_NUM_CTX = boundedInt('ORCH_LOCAL_NUM_CTX', env.ORCH_LOCAL_NUM_CTX, 16384, 2048, 32768);
+const LOCAL_NUM_PREDICT = boundedInt('ORCH_LOCAL_NUM_PREDICT', env.ORCH_LOCAL_NUM_PREDICT, 2048, 1, 131072, [-1]);
+/** Request cap in chars for a window: (num_ctx - reply - 1500 overhead) tokens at 3.45 chars/token, rounded down to 1000. */
+function requestCapFor(numCtx, numPredict) {
+  const reply = numPredict > 0 ? numPredict : 2048;
+  return Math.max(8000, Math.floor(((numCtx - reply - 1500) * 3.45) / 1000) * 1000);
+}
+
 module.exports = {
+  requestCapFor,
   HOST: '127.0.0.1', // hard-coded on purpose: never expose externally
   PORT: num(env.ORCH_PORT, 4310),
   HOME,
@@ -75,16 +85,20 @@ module.exports = {
   MODEL: env.ORCH_MODEL || 'ollama_chat/qwen2.5-coder:7b',
   AIDER_BIN: env.ORCH_AIDER_BIN || path.join(HOME, '.local', 'bin', 'aider'),
   // local request budget (swap-relook #5: one ~474 KB request stalled the 9B model; #9-#13: no files + no repo map = no code seen)
-  LOCAL_MAX_REQUEST_CHARS: num(env.ORCH_LOCAL_MAX_REQUEST_CHARS, 60000),  // message + context + pinned/auto-added files + repo map (~15k tokens)
+  // message + context + pinned files + repo map. Default derives from num_ctx: (num_ctx - num_predict - 1500 prompt overhead) * 3.45 chars/token
+  // = 44,000 at 16384/2048, so a request that passes the cap also leaves room for the reply (60000 filled the whole window: tasks #15-#21, #30)
+  LOCAL_MAX_REQUEST_CHARS: num(env.ORCH_LOCAL_MAX_REQUEST_CHARS, requestCapFor(LOCAL_NUM_CTX, LOCAL_NUM_PREDICT)),
   LOCAL_MAX_FILE_BYTES: num(env.ORCH_LOCAL_MAX_FILE_BYTES, 64 * 1024),   // tracked files above this go into the aider ignore file (unless pinned)
-  LOCAL_MAX_FILES: num(env.ORCH_LOCAL_MAX_FILES, 5),                     // more pinned files = multi-file task: refused locally (Cursor / split)
-  LOCAL_MAP_TOKENS: num(env.ORCH_LOCAL_MAP_TOKENS, 2048),                // repo map when no files are pinned
-  LOCAL_MAP_TOKENS_WITH_FILES: num(env.ORCH_LOCAL_MAP_TOKENS_WITH_FILES, 1024),
+  LOCAL_MAX_FILES: num(env.ORCH_LOCAL_MAX_FILES, 3),                     // more pinned files = multi-file task: split into a sequence (v2) or refused locally
+  LOCAL_MAP_TOKENS: num(env.ORCH_LOCAL_MAP_TOKENS, 1024),                // repo map when no files are pinned
+  LOCAL_MAP_TOKENS_WITH_FILES: num(env.ORCH_LOCAL_MAP_TOKENS_WITH_FILES, 512),
+  // pinned files only: aider 0.86 has no --no-auto-add, so every tracked non-pinned file goes into the run's ignore file (ORCH_AIDER_PIN_ONLY=0 = old behaviour)
+  AIDER_PIN_ONLY: env.ORCH_AIDER_PIN_ONLY !== '0',
   AIDER_THINK: env.ORCH_AIDER_THINK === '1', // default off: aider gets think:false for thinking-capable local models
   // unset or '' means diff, then whole for a pinned file under 4 KB or a pinned file that does not exist yet (lib/runner.js)
   AIDER_EDIT_FORMAT: env.ORCH_AIDER_EDIT_FORMAT ? String(env.ORCH_AIDER_EDIT_FORMAT) : '',
-  LOCAL_NUM_PREDICT: boundedInt('ORCH_LOCAL_NUM_PREDICT', env.ORCH_LOCAL_NUM_PREDICT, 4096, 1, 131072, [-1]),
-  LOCAL_NUM_CTX: 16384, // coding-role default when the role does not set num_ctx; not an env var (CTX_WARN, under CTX_MAX)
+  LOCAL_NUM_PREDICT,
+  LOCAL_NUM_CTX, // coding-role default when the role does not set num_ctx (ORCH_LOCAL_NUM_CTX, 2048..32768)
   OLLAMA_KEEP_ALIVE: env.ORCH_OLLAMA_KEEP_ALIVE ? String(env.ORCH_OLLAMA_KEEP_ALIVE) : '30m', // top-level field on native /api/chat only
   PROTECTED_BRANCHES: (env.ORCH_PROTECTED_BRANCHES !== undefined ? env.ORCH_PROTECTED_BRANCHES : 'main,uat,UAT').split(',').map((s) => s.trim()).filter(Boolean),
   FLOW: env.ORCH_FLOW === 'v1' ? 'v1' : 'v2', // unset or v2 is the agentic flow; ORCH_FLOW=v1 keeps the old flow
@@ -96,7 +110,9 @@ module.exports = {
   V2_MAX_MIN: boundedInt('ORCH_V2_MAX_MIN', env.ORCH_V2_MAX_MIN, 45, 1, 240),
   V2_DIFF_LOCAL: boundedInt('ORCH_V2_DIFF_LOCAL', env.ORCH_V2_DIFF_LOCAL, 150, 1, 100000),
   V2_DIFF_CURSOR: boundedInt('ORCH_V2_DIFF_CURSOR', env.ORCH_V2_DIFF_CURSOR, 300, 1, 100000),
-  V2_LOCAL_MODELS: (env.ORCH_V2_LOCAL_MODELS !== undefined && env.ORCH_V2_LOCAL_MODELS !== '' ? env.ORCH_V2_LOCAL_MODELS : 'ornith:9b,qwen3.5:9b').split(',').map((s) => s.trim()).filter(Boolean),
+  V2_LOCAL_MODELS: (env.ORCH_V2_LOCAL_MODELS !== undefined && env.ORCH_V2_LOCAL_MODELS !== '' ? env.ORCH_V2_LOCAL_MODELS : 'ornith:9b,qwen2.5-coder:7b').split(',').map((s) => s.trim()).filter(Boolean),
+  // Cursor is only reached after this many failed local attempts on a step (soft reasons such as files/diff_size no longer jump straight to Cursor)
+  V2_LOCAL_FAILS_BEFORE_CURSOR: boundedInt('ORCH_V2_LOCAL_FAILS_BEFORE_CURSOR', env.ORCH_V2_LOCAL_FAILS_BEFORE_CURSOR, 2, 0, 10),
   // hard timeouts (ms) for every subprocess
   AIDER_TIMEOUT_MS: num(env.ORCH_AIDER_TIMEOUT_MS, 20 * 60 * 1000),
   INSTALL_TIMEOUT_MS: num(env.ORCH_INSTALL_TIMEOUT_MS, 10 * 60 * 1000),

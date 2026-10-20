@@ -105,16 +105,16 @@ describe('M31 edit-format selection (pure)', () => {
 });
 
 describe('M31 aider settings and keep_alive (in-process)', () => {
-  it('aiderSettingsFor emits num_predict 4096 and num_ctx 16384, and role values win', async () => {
-    assert.equal(cfg.LOCAL_NUM_PREDICT, 4096);
+  it('aiderSettingsFor emits the coder defaults (num_predict 2048, num_ctx 16384, temperature 0.1, seed 42), and role values win', async () => {
+    assert.equal(cfg.LOCAL_NUM_PREDICT, 2048);
     assert.equal(cfg.LOCAL_NUM_CTX, 16384);
     store.clearModelRole('coding');
     const d = await models.aiderSettingsFor('ollama_chat/m');
-    assert.equal(d.yaml, '- name: ollama_chat/m\n  extra_params:\n    num_ctx: 16384\n    num_predict: 4096\n');
+    assert.equal(d.yaml, '- name: ollama_chat/m\n  extra_params:\n    num_ctx: 16384\n    temperature: 0.1\n    top_p: 0.9\n    top_k: 20\n    repeat_penalty: 1.05\n    num_predict: 2048\n    seed: 42\n');
     store.setModelRole('coding', 'm', { num_ctx: 8192, num_predict: 512 });
     try {
       const r = await models.aiderSettingsFor('ollama_chat/m');
-      assert.equal(r.yaml, '- name: ollama_chat/m\n  extra_params:\n    num_ctx: 8192\n    num_predict: 512\n');
+      assert.equal(r.yaml, '- name: ollama_chat/m\n  extra_params:\n    num_ctx: 8192\n    temperature: 0.1\n    top_p: 0.9\n    top_k: 20\n    repeat_penalty: 1.05\n    num_predict: 512\n    seed: 42\n');
     } finally { store.clearModelRole('coding'); }
   });
   it('ORCH_LOCAL_NUM_PREDICT rejects 0 and accepts -1', async () => {
@@ -234,5 +234,32 @@ describe('M31 edit-format env and check timeout', () => {
       try { process.kill(pid, 0); } catch (e) { alive = e.code !== 'ESRCH'; }
       assert.equal(alive, false);
     } finally { await S.stop(); }
+  });
+});
+
+describe('M50 tuning: local window and request cap', () => {
+  it('derives the request cap from num_ctx and num_predict (16384/2048 -> 44000) and ORCH_LOCAL_NUM_CTX moves it', async () => {
+    assert.equal(cfg.requestCapFor(16384, 2048), 44000);
+    assert.equal(cfg.requestCapFor(12288, 1536), 31000);
+    assert.equal(cfg.LOCAL_MAX_FILES, 3);
+    const r = await runNode("const c = require('./config'); console.log(c.LOCAL_NUM_CTX, c.LOCAL_MAX_REQUEST_CHARS)", { ORCH_LOCAL_NUM_CTX: '8192', ORCH_LOCAL_MAX_REQUEST_CHARS: '' });
+    assert.equal(r.stdout.trim(), '8192 16000');
+    const bad = await runNode("require('./config')", { ORCH_LOCAL_NUM_CTX: '999999' });
+    assert.notEqual(bad.code, 0);
+  });
+  it('roles: think off, coder seed 42 / temperature 0.1, planner 12288, reader 8192/512, repair on the second model', () => {
+    const roles = require('../lib/flow/roles');
+    const c = roles.optionsFor('coder');
+    assert.equal(c.temperature, 0.1); assert.equal(c.seed, 42); assert.equal(c.num_predict, 2048); assert.equal(c.num_ctx, 16384);
+    assert.equal(roles.optionsFor('planner').num_ctx, 12288);
+    assert.deepEqual([roles.optionsFor('reader').num_ctx, roles.optionsFor('reader').num_predict], [8192, 512]);
+    for (const r of roles.ROLES) assert.equal(roles.chatFields(r).think, false);
+    assert.equal(roles.modelFor('repair', ['ornith:9b', 'qwen2.5-coder:7b']), 'qwen2.5-coder:7b');
+    assert.equal(roles.modelFor('coder', ['qwen2.5-coder:7b']), 'qwen2.5-coder:7b');
+    assert.equal(roles.modelFor('repair', ['ornith:9b']), 'ornith:9b');
+  });
+  it('v2 step settings file carries the role options and think:false', () => {
+    const { stepSettingsYaml } = require('../lib/flow/coder');
+    assert.equal(stepSettingsYaml('ollama_chat/ornith:9b'), '- name: ollama_chat/ornith:9b\n  extra_params:\n    num_ctx: 16384\n    temperature: 0.1\n    top_p: 0.9\n    top_k: 20\n    repeat_penalty: 1.05\n    num_predict: 2048\n    seed: 42\n    think: false\n');
   });
 });

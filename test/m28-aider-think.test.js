@@ -21,21 +21,21 @@ describe('M28 aider think:false for thinking models', () => {
   it('thinking model (ornith:9b): think:false plus num_ctx/num_predict defaults; non-thinking model omits think', async () => {
     await S.runToReview(P.id, { title: 'a', prompt: 'edit', files: ['a.txt'], engine: 'local' });
     let rec = lastAider(S);
-    assert.equal(rec.settings, '- name: ollama_chat/ornith:9b\n  extra_params:\n    num_ctx: 16384\n    num_predict: 4096\n    think: false\n');
+    assert.equal(rec.settings, '- name: ollama_chat/ornith:9b\n  extra_params:\n    num_ctx: 16384\n    temperature: 0.1\n    top_p: 0.9\n    top_k: 20\n    repeat_penalty: 1.05\n    num_predict: 2048\n    seed: 42\n    think: false\n');
     await S.post('/models/roles', { role: 'coding', model: 'deepseek-ocr:latest', options: {} });
     await S.runToReview(P.id, { title: 'b', prompt: 'edit', files: ['a.txt'], engine: 'local' });
     rec = lastAider(S);
     assert.equal(rec.model, 'ollama_chat/deepseek-ocr:latest');
-    assert.equal(rec.settings, '- name: ollama_chat/deepseek-ocr:latest\n  extra_params:\n    num_ctx: 16384\n    num_predict: 4096\n');
+    assert.equal(rec.settings, '- name: ollama_chat/deepseek-ocr:latest\n  extra_params:\n    num_ctx: 16384\n    temperature: 0.1\n    top_p: 0.9\n    top_k: 20\n    repeat_penalty: 1.05\n    num_predict: 2048\n    seed: 42\n');
     assert.ok(rec.args.includes('--model-settings-file'));
     await S.post('/models/roles/clear', { role: 'coding' });
   });
 
-  it('an explicit coding-role think option wins and is validated (warning when turned on)', async () => {
+  it('a stored coding-role think option is validated (warning) but sent as think:false unless ORCH_AIDER_THINK=1', async () => {
     const r = await S.post('/models/roles', { role: 'coding', model: 'ornith:9b', options: { think: 'low' } });
     assert.ok((r.warnings || []).some((w) => /passed to aider/.test(w)));
     await S.runToReview(P.id, { title: 'c', prompt: 'edit', files: ['a.txt'], engine: 'local' });
-    assert.equal(lastAider(S).settings, '- name: ollama_chat/ornith:9b\n  extra_params:\n    num_ctx: 16384\n    num_predict: 4096\n    think: "low"\n');
+    assert.equal(lastAider(S).settings, '- name: ollama_chat/ornith:9b\n  extra_params:\n    num_ctx: 16384\n    temperature: 0.1\n    top_p: 0.9\n    top_k: 20\n    repeat_penalty: 1.05\n    num_predict: 2048\n    seed: 42\n    think: false\n');
     await S.post('/models/roles/clear', { role: 'coding' });
   });
 
@@ -44,7 +44,7 @@ describe('M28 aider think:false for thinking models', () => {
     try {
       const P2 = await S2.addProject(makeRepo(path.join(S2.work, 'th2'), { 'a.txt': 'a\n' }), 'th2', 'true');
       await S2.runToReview(P2.id, { title: 'a', prompt: 'edit', files: ['a.txt'], engine: 'local' });
-      assert.equal(lastAider(S2).settings, '- name: ollama_chat/ornith:9b\n  extra_params:\n    num_ctx: 16384\n    num_predict: 4096\n');
+      assert.equal(lastAider(S2).settings, '- name: ollama_chat/ornith:9b\n  extra_params:\n    num_ctx: 16384\n    temperature: 0.1\n    top_p: 0.9\n    top_k: 20\n    repeat_penalty: 1.05\n    num_predict: 2048\n    seed: 42\n');
     } finally { await S2.stop(); }
   });
 });
