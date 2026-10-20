@@ -55,7 +55,7 @@ Localhost-only (Host/Origin checks, no auth, so do not expose the port), authori
 ### Development
 
 ```bash
-npm test            # 555 tests on the author machine (555 pass, 0 fail, 0 skipped); fresh-clone/CI count is recorded after the pull-request run (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
+npm test            # 560 tests on the author machine (560 pass, 0 fail, 0 skipped); fresh-clone/CI count is recorded after the pull-request run (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
 npm run doctor      # same as ./setup.sh
 ```
 
@@ -312,6 +312,7 @@ Plain ES modules in `public/` (`index.html`, `style.css`, `app.js`, `js/*.js`), 
 * `POST /api/services/:id/index/rebuild` rebuilds it, including summaries.
 * `GET /api/services/:id/index/search?q=` matches symbol names, paths and summaries.
 * The project page has an **Index** tab. A v2 task rebuilds the structural index (no summary call) when it is missing or stale.
+* When the prompt has no `## Files` section and no pinned file list, `lib/flow/rank.js` picks the edit list from that index: symbol and path matches, folder-summary overlap, and import-graph neighbours as read-only snippets. A name introduced as a new enum is proposed beside an existing `*.enum.ts`. An explicit Files section still wins. The coder step keeps `--map-tokens 0` and only the chosen files. Snippets stop at about 60% of the local context (`lib/flow/reader.js`).
 
 ## Upgrading the schema (v4, v5, v6, v7, v8), backups and rollback
 

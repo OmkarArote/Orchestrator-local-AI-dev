@@ -49,6 +49,7 @@ RAM on a 16 GB M4 (estimate):
 | 16 | `ORCH_V2_LOCAL_MODELS` (after the saved coding and debugging role models) | `ornith:9b,qwen3.5:9b` -> `ornith:9b,qwen2.5-coder:7b` (qwen3.5:9b stays installed as an option) | qwen2.5-coder:7b is a code model with no thinking, 1.9 GB smaller | `ollama list` |
 | 17 | pipeline `switchModel` | unload only before local2 -> unload (keep_alive 0) on every model switch and before Cursor | two models resident on 16 GB | m38 (M50 switchModel) |
 | 18 | `lib/index/build.js`, `lib/db.js` | a task with no file list has nothing to search -> schema v8 stores one index per service (tree, symbols, import edges, folder summaries). A v2 task refreshes the structural index when the default branch has moved; summaries update on rebuild, and only for folders whose files changed | tasks #20-#37 explore the whole repo | `test/m55-project-index.test.js` |
+| 19 | `lib/flow/rank.js`, `lib/flow/reader.js`, `lib/flow/pipeline.js` | the reader grepped the worktree and still missed the right files -> it ranks the service index (symbols, paths, folder summaries, import neighbours). A `## Files` section still wins. A new enum named in backticks is proposed next to an existing `*.enum.ts`. Snippets stay under 60% of the local context; aider still gets `--map-tokens 0` | visit and book prompts with no file list | `test/m56-index-reader.test.js` |
 
 `ORCH_AIDER_EDIT_FORMAT` is unchanged. The auto choice is still `diff` for files of 4096 bytes or more and `whole` below that, and v2 steps always use `diff`.
 
