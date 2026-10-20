@@ -221,6 +221,7 @@ async function renderDetail(pane, id, { stream, tab: startTab }) {
     ];
     if (t.context) facts.push(el('div', { className: 'small dim' }, `context bundle given to the engine: ${t.context.total_chars}/${t.context.max_chars} chars (${t.context.parts.map((x) => x.name + (x.truncated ? '*' : '')).join(', ')}); file: ${shortPath(t.context.file)}`));
     if (t.group_id) facts.push(el('div', { className: 'small dim' }, `Part of sequence #${t.group_id}, step ${t.step_no}${t.base_ref ? '; built on top of ' + t.base_ref : ''}. Diff compares against ${t.base_ref || 'the default branch'}. `, el('a', { href: `#/projects/${t.project_id}/sequences` }, 'open sequences')));
+    if (t.routing && t.routing.split_parent) facts.push(el('div', { className: 'small dim' }, 'The full original request is stored once on ', el('a', { href: `#/tasks/${t.routing.split_parent}` }, `task #${t.routing.split_parent}`), '.'));
     if (attInfo && attInfo.attachments && attInfo.attachments.length) facts.push(el('div', { className: 'small' }, `sent to Cursor: ${attInfo.sent_to_cursor ? 'yes' : 'no'}`));
     const sideKids = [el('div', { className: 'card stack' }, el('h3', {}, 'Details'), ...facts), lineageCard(t.id)];
     const rc = routingCard(t); if (rc) sideKids.splice(1, 0, rc);

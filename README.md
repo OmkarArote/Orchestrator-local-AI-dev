@@ -55,7 +55,7 @@ Localhost-only (Host/Origin checks, no auth, so do not expose the port), authori
 ### Development
 
 ```bash
-npm test            # 547 tests on the author machine (547 pass, 0 fail, 0 skipped); fresh-clone/CI count is recorded after the pull-request run (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
+npm test            # 549 tests on the author machine (549 pass, 0 fail, 0 skipped); fresh-clone/CI count is recorded after the pull-request run (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
 npm run doctor      # same as ./setup.sh
 ```
 
@@ -65,7 +65,7 @@ Continuing development in another tool (e.g. Cursor)? Start with `docs/HANDOFF-C
 
 Unset `ORCH_FLOW`, or `ORCH_FLOW=v2`, selects v2. `ORCH_FLOW=v1` keeps the old flow: a multi-file prompt stays on the local engine and only logs a warning. v2, for engine `auto`, reads the repo, plans, edits one step at a time, runs the check, and repairs. The flow is stored on the task when it is created, so a task already running on v1 stays on v1. `POST /api/do` creates the task already approved, so there is no start click. The run stops at `review`. `approve-merge` stays human-only.
 
-The local fallback order is `ornith:9b`, then `qwen2.5-coder:7b` when that model is already installed, then Cursor (`ORCH_V2_LOCAL_MODELS`). A step reaches Cursor only after `ORCH_V2_LOCAL_FAILS_BEFORE_CURSOR` failed local attempts (default 2), and a prompt naming more than `ORCH_LOCAL_MAX_FILES` files is split into a stacked sequence that runs from the parent's one start approval (`ORCH_SPLIT_AUTORUN=0` leaves each part pending; see `docs/TUNING.md`). Nothing is downloaded. After `ORCH_V2_CURSOR_RUNS` Cursor runs in one task (default 3), the task fails with reason `budget`.
+The local fallback order is `ornith:9b`, then `qwen2.5-coder:7b` when that model is already installed, then Cursor (`ORCH_V2_LOCAL_MODELS`). A step reaches Cursor only after `ORCH_V2_LOCAL_FAILS_BEFORE_CURSOR` failed local attempts (default 2), and a prompt naming more than `ORCH_LOCAL_MAX_FILES` files is split into a stacked sequence that runs from the parent's one start approval (`ORCH_SPLIT_AUTORUN=0` leaves each part pending). Each part gets its own short prompt; the full original stays on the parent (see `docs/TUNING.md`). Nothing is downloaded. After `ORCH_V2_CURSOR_RUNS` Cursor runs in one task (default 3), the task fails with reason `budget`.
 
 `bin/orc.js` is an HTTP client (`package.json` `bin.orc`). It does not open the database. `orc do` waits until the task is `review` or `failed`. `orc review <id>` prints the task plus `GET /api/tasks/:id/lineage`. The task page shows that lineage as a vertical timeline on the right (plan, step, attempt, repair, escalation, merge), next to the service, branch, files, and check, with an engine badge, status, duration, and the escalation chain on the step. It refreshes while the task is approved, running, or checking. The timeline is built from `task_events`.
 
