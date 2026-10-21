@@ -558,6 +558,10 @@ async function groupApi(req, res, url) {
 
 async function api(req, res, url) {
   if (url.pathname === '/api/health') return sendJson(res, 200, { ok: true, schema: store.schemaVersion(), projects: store.listProjects().length, model: models.aiderModelArg(), cursor_usage: usageView() });
+  if (url.pathname === '/api/decider/status') {
+    if (req.method !== 'GET') return fail(res, 405, 'method not allowed');
+    return sendJson(res, 200, await require('./lib/decider/status').status({ autostart: false }));
+  }
   if (url.pathname === '/api/evals/runs' && req.method === 'GET') return sendJson(res, 200, require('./lib/evals/runs').list());
   if (url.pathname === '/api/config') {
     return sendJson(res, 200, {
@@ -998,5 +1002,8 @@ server.listen(cfg.PORT, cfg.HOST, () => {
   const sweepAttachments = () => { try { const r = attachments.gc(); if (r.removed.length || r.orphans) console.log(`[attachments] sweep removed ${r.removed.length} unreferenced attachment(s) (${r.bytes} bytes), ${r.orphans} orphan file(s)${r.retention ? `, ${r.retention} by retention` : ''}`); } catch (e) { console.error('[attachments] sweep failed:', e.message); } };
   sweepAttachments(); setInterval(sweepAttachments, 3600 * 1000).unref();
   runner.start();
+  require('./lib/decider/status').status({ autostart: cfg.DECIDER }).then((s) => {
+    console.log(`[startup] decider ${s.backend}${s.setup ? `: ${s.setup}` : ''}${s.fallback && s.backend !== 'laya' ? ` (${s.fallback})` : ''}`);
+  }).catch((e) => console.error('[startup] decider status failed:', e.message));
 });
 for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { console.log(`${sig}: shutting down`); runner.stopCurrent(); server.close(); setTimeout(() => process.exit(0), 200); });

@@ -21,6 +21,7 @@ export async function loadServices(pid, force = true) {
 export async function loadCfg() { try { S.cfg = await api('/config'); } catch { /* ignore */ } return S.cfg; }
 export async function loadCursor() { try { S.cursor = await api('/cursor/status'); } catch (e) { S.cursor = { error: e.message }; } notify(); return S.cursor; }
 export async function loadOllama() { try { S.ollama = await api('/ollama/status'); } catch (e) { S.ollama = { reachable: false, error: { message: e.message } }; } notify(); return S.ollama; }
+export async function loadDecider() { try { S.decider = await api('/decider/status'); } catch (e) { S.decider = { backend: 'down', setup: e.message }; } notify(); return S.decider; }
 export function setProjectFilter(v) { S.filter.project = v ? String(v) : ''; localStorage.setItem('projFilter', S.filter.project); }
 export const project = (id) => S.projects.find((p) => String(p.id) === String(id));
 export const projName = (id) => (project(id) || {}).name || `#${id}`;
