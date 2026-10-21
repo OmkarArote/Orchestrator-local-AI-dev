@@ -1,5 +1,5 @@
 'use strict';
-// M3: multi-file detection. v1 warns and stays local. v2 routes engine auto to the Cursor planner. No schema change.
+// M3: multi-file detection. v1 warns and stays local. v2 splits a prompt that names more than ORCH_LOCAL_MAX_FILES. A 2-file prompt stays local. No schema change.
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -55,7 +55,7 @@ describe('M33 multi-file routing', () => {
     } finally { await S.stop(); }
   });
 
-  it('v2 keeps a 2-file prompt local (no Cursor planner); ORCH_V2_LOCAL_FAILS_BEFORE_CURSOR=0 restores the Cursor planner', async () => {
+  it('v2 keeps a 2-file prompt local; ORCH_V2_LOCAL_FAILS_BEFORE_CURSOR=0 does not open the Cursor planner', async () => {
     const { S, P } = await boot('v2');
     try {
       const n = aiderCount(S);
@@ -72,10 +72,10 @@ describe('M33 multi-file routing', () => {
       const n = aiderCount(S2);
       const t = await S2.runToReview(P2.id, { title: 'v2', prompt, engine: 'auto', allow_escalation: true }, 'review');
       const events = await evs(S2, t.id);
-      assert.equal(aiderCount(S2), n);
-      assert.match(cursorLog(S2), /mode=plan/);
-      assert.ok(events.some((e) => e.kind === 'route' && /route files:/.test(e.message)));
-      assert.ok(t.plan_text);
+      assert.ok(aiderCount(S2) > n, 'aider still ran; the env only counts failed attempts');
+      assert.doesNotMatch(cursorLog(S2), /mode=force/);
+      assert.ok(events.some((e) => e.kind === 'route' && /route local: 2 file\(s\) fit one local pass/.test(e.message)));
+      assert.equal(t.status, 'review');
     } finally { await S2.stop(); }
   });
 

@@ -437,7 +437,9 @@ The dashboard shows engine + model per task and a clear badge: **local** (green,
 | `ORCH_RAG_WINDOW` | `60` | lines per fallback window, and the cap on a symbol chunk |
 | `ORCH_RAG_W_BM25` / `ORCH_RAG_W_VECTOR` / `ORCH_RAG_W_GRAPH` | `0.5` / `0.3` / `0.2` | hybrid rank weights. Missing vectors drop the vector weight and renormalize the other two |
 | `ORCH_DECIDER` | off | `1` runs the scope gate before the coder. Off leaves file selection as it is |
-| `ORCH_DECIDER_ACT` / `ORCH_DECIDER_ASK` | `0.9` / `0.6` | at or above act, apply the label; from ask up to act, pause; below ask, send the task to Cursor |
+| `ORCH_DECIDER_ACT` / `ORCH_DECIDER_ASK` | `0.9` / `0.6` | at or above act, apply a valid label; from ask up to act, pause; below ask, a valid answer goes to Cursor. A missing or out-of-range answer is retried once, then paused. It does not go to Cursor |
+| `ORCH_DECIDER_FALLBACK_CAP` | `0.85` | ornith confidence ceiling, below the act band, so a fallback route asks. Laya is not capped. Project setting `decider_fallback_cap` |
+| `ORCH_DECIDER_FILE_CAP` | `20` | edit files above this go to Cursor without asking. Fewer files follow the decider: `split`, or more than `ORCH_LOCAL_MAX_FILES`, becomes local parts of at most 3. Project setting `decider_file_cap`. `ORCH_V2_LOCAL_FAILS_BEFORE_CURSOR` still counts failed local attempts; it does not open the planner first |
 | `ORCH_LAYA_PORT` | `4327` | Laya sidecar on `127.0.0.1`. Not the orchestrator port |
 | `ORCH_LAYA_AUTOSTART` | on | `0` does not start the sidecar. A failed health check uses the ornith fallback |
 | `ORCH_LAYA_KEEP` | off | `1` leaves the sidecar running while a coder model loads. Default stops it first |
