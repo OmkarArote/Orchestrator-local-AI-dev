@@ -30,12 +30,15 @@ function card(n) {
     n.file && n.file !== '(task)' ? el('code', {}, n.file) : null,
     n.engine ? badge(n.engine) : null,
     n.model ? badge(n.model) : null,
+    n.rule ? el('span', { className: 'small' }, `rule ${n.rule}`) : null,
     n.status ? el('span', { className: 'small' }, n.status) : null,
     n.ms != null ? el('span', { className: 'small dim' }, `${n.ms} ms`) : null);
   const names = chain(n);
   const reason = n.reason ? el('div', { className: 'small' }, n.reason) : null;
   const steps = names.length > 1 ? el('div', { className: 'ln-chain' }, names.join(' → ')) : null;
   const bits = [];
+  if (n.fallback) bits.push(el('div', { className: 'small dim' }, 'Fallback'), el('div', { className: 'small' }, String(n.fallback)));
+  if (Array.isArray(n.items) && n.items.length) bits.push(el('div', { className: 'small dim' }, 'Answers'), el('pre', { className: 'plain' }, n.items.map((it) => `${it.id}=${JSON.stringify(it.value == null ? it.label : it.value)} ${it.confidence == null ? 'invalid' : it.confidence} ${it.band || ''}${it.backend ? ` ${it.backend}` : ''}${it.retried ? ' retried' : ''}${it.invalid ? ' invalid' : ''}`).join('\n')));
   if (n.note) bits.push(el('div', { className: 'small dim' }, 'Included'), el('pre', { className: 'plain' }, String(n.note).slice(0, 2000)));
   if (n.check) bits.push(el('div', { className: 'small dim' }, 'Check'), el('pre', { className: 'plain' }, String(n.check).slice(-400)));
   if (n.sha) bits.push(el('div', { className: 'small dim' }, 'Commit'), el('code', {}, String(n.sha).slice(0, 12)));

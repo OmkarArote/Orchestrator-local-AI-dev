@@ -1,10 +1,27 @@
 'use strict';
 // A follow-up keeps the task branch and comes back to review. It does not merge.
+const http = require('node:http');
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { startServer, makeRepo, git } = require('./helpers/harness');
+
+function layaYes() {
+  const server = http.createServer((req, res) => {
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => {
+      res.setHeader('Content-Type', 'application/json');
+      if (req.url === '/health') return res.end(JSON.stringify({ ok: true }));
+      res.end(JSON.stringify({ answers: { needs_code_change: { p: 0.97 } }, confidence: 0.97 }));
+    });
+  });
+  return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve({
+    port: server.address().port,
+    close: () => new Promise((r) => server.close(r)),
+  })));
+}
 
 const PLAN = JSON.stringify({
   targetBranch: null,
@@ -35,7 +52,8 @@ function openChat(S, id, body) {
 
 describe('follow-up on the same branch', () => {
   it('iteration 2 returns to review without recreating the branch or merging', async () => {
-    const S = await startServer();
+    const laya = await layaYes();
+    const S = await startServer({ env: { ORCH_LAYA_AUTOSTART: '0', ORCH_LAYA_PORT: String(laya.port) } });
     try {
       const repo = makeRepo(path.join(S.work, 'api'), { 'a.txt': 'base\n' });
       const main = git(repo, 'rev-parse', 'main').trim();
@@ -66,11 +84,12 @@ describe('follow-up on the same branch', () => {
       const lin = await S.get(`/tasks/${first.id}/lineage`);
       assert.match(JSON.stringify(lin.tree), /"kind":"followup"/);
       assert.match(JSON.stringify(lin.tree), /iteration 2/);
-    } finally { await S.stop(); }
+    } finally { await S.stop(); await laya.close(); }
   });
 
   it('chat starts the same follow-up', async () => {
-    const S = await startServer();
+    const laya = await layaYes();
+    const S = await startServer({ env: { ORCH_LAYA_AUTOSTART: '0', ORCH_LAYA_PORT: String(laya.port) } });
     try {
       const repo = makeRepo(path.join(S.work, 'api'), { 'a.txt': 'base\n' });
       const P = await S.addProject(repo, 'api', 'true');
@@ -86,6 +105,6 @@ describe('follow-up on the same branch', () => {
       const second = await S.waitStatus(first.id, 'review');
       assert.equal(second.iteration, 2);
       assert.equal(second.branch, first.branch);
-    } finally { await S.stop(); }
+    } finally { await S.stop(); await laya.close(); }
   });
 });
