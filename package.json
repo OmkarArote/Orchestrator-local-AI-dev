@@ -4,14 +4,18 @@
   "private": true,
   "description": "Local-first task orchestrator: approve -> aider in git worktree -> check -> review -> approve merge",
   "main": "server.js",
-  "bin": { "orc": "bin/orc.js" },
+  "bin": {
+    "orc": "bin/orc.js"
+  },
   "scripts": {
     "start": "node server.js",
     "test": "node --test --test-concurrency=4 \"test/**/*.test.js\"",
     "eval": "node scripts/eval.js",
     "test:m0": "node --test --test-concurrency=4 \"test/m0-*.test.js\"",
     "setup": "./setup.sh",
-    "doctor": "./setup.sh"
+    "doctor": "./setup.sh",
+    "css": "tailwindcss -i public/css/input.css -o public/style.css",
+    "css:watch": "tailwindcss -i public/css/input.css -o public/style.css --watch"
   },
   "engines": {
     "node": ">=22.5"
@@ -28,5 +32,9 @@
     "local-ai",
     "orchestrator",
     "git-worktree"
-  ]
+  ],
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.3.3",
+    "tailwindcss": "^4.3.3"
+  }
 }

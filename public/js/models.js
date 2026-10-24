@@ -62,7 +62,7 @@ export async function render(main) {
     const defSel = select([['', `config / env (${st.default_source === 'config' ? st.default_model : 'cleared'})`], ...installed.map((m) => [m.name, m.name])], st.default_source === 'setting' ? st.default_model : '');
     const defBtn = el('button', { className: 'btn sec sm', textContent: 'Set default', onclick: (e) => busy(e.currentTarget, async () => { await api('/models/default', { model: defSel.value || null }); toast('default model updated', 'ok'); await load(); }) });
     return el('div', { className: 'card' },
-      el('div', { className: 'row mb' }, el('b', {}, 'Default model for roles without an override'), el('div', { style: { width: '260px' } }, defSel), defBtn),
+      el('div', { className: 'row mb' }, el('b', { className: 'grow' }, 'Default model for roles without an override'), el('div', { className: 'grow-control' }, defSel), defBtn),
       el('table', {}, el('thead', {}, el('tr', {}, ...['Role', 'Model', 'Options', 'Used by', ''].map((h) => el('th', {}, h)))),
         el('tbody', {}, ...roles.map((r) => el('tr', {},
           el('td', {}, el('b', {}, r.role), r.wired ? null : el('div', { className: 'tiny dim' }, 'stored only')),

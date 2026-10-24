@@ -38,10 +38,13 @@ describe('README accuracy', () => {
     const scripts = JSON.parse(read('package.json')).scripts;
     for (const m of README.matchAll(/\bnpm (?:run )?(test|doctor|start|setup|test:m0)\b/g)) assert.ok(scripts[m[1]], `npm ${m[1]}`);
   });
-  it('the README states the real minimum Node version and that there are no npm dependencies', () => {
+  it('the README states the real minimum Node version and that runtime needs no npm install', () => {
     const pkg = JSON.parse(read('package.json'));
     assert.equal(pkg.engines.node, '>=22.5'); assert.match(README, /Node\.js >= 22\.5/);
-    assert.equal(Object.keys(pkg.dependencies || {}).length + Object.keys(pkg.devDependencies || {}).length, 0);
-    assert.match(README, /Zero npm dependencies/);
+    assert.deepEqual(Object.keys(pkg.dependencies || {}), []);
+    assert.deepEqual(Object.keys(pkg.devDependencies || {}).sort(), ['@tailwindcss/cli', 'tailwindcss']);
+    assert.equal(typeof pkg.scripts.css, 'string');
+    assert.match(README, /zero npm dependencies/i);
+    assert.match(README, /npm run css/);
   });
 });

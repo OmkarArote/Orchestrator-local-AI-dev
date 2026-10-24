@@ -1,5 +1,5 @@
 // Tasks: list + detail (live terminal log, coloured diff, approvals, overrides, routing/plan/review cards, new-task modal).
-import { el, clear, api, badge, chip, statusBadge, empty, skeletonLines, field, select, modal, confirmDialog, promptDialog, toast, toastError, busy, hhmmss, copyText, shortPath } from './ui.js';
+import { el, clear, api, badge, chip, statusBadge, empty, skeletonLines, field, select, modal, confirmDialog, promptDialog, toast, toastError, busy, hhmmss, copyText, shortPath, attachTile } from './ui.js';
 import { icon } from './icons.js';
 import { uploadFile } from './attachments.js';
 import { S, loadTasks, loadMem, loadServices, loadProjects, project, projName, activeServices, ACTIVE_STATUSES, setProjectFilter } from './state.js';
@@ -191,24 +191,37 @@ function overrideForm(t, o, rerender) {
 
 async function renderDetail(pane, id, { stream, tab: startTab }) {
   let sig = '', tab = 'log', term = null, timer = null, diffLoaded = false;
-  const head = el('div', { className: 'task-head stack' });
+  const titleHost = el('div', { className: 'task-title stack' });
+  const metaHost = el('div', { className: 'task-meta stack' });
   const promptHost = el('div', { className: 'task-prompt' });
   const actionsHost = el('div', { className: 'task-actions' });
   const logHost = el('div', { className: 'log-host' }); const diffHost = el('div', { className: 'diff-host', style: { display: 'none' } });
   const tail = el('div', { className: 'task-tail stack' });
   const tabLog = el('button', { className: 'on', textContent: 'Live log', onclick: () => setTab('log') }), tabDiff = el('button', { textContent: 'Diff', onclick: () => setTab('diff') });
-  clear(pane, el('div', { className: 'task-fill' }, head, el('div', { className: 'task-mid' }, promptHost, actionsHost, el('div', { className: 'tabs' }, tabLog, tabDiff), logHost, diffHost), tail));
+  const promptBar = el('div', { className: 'tile-bar' }, el('span', { className: 'tile-title' }, 'Prompt'));
+  const promptBody = el('div', {}, promptHost);
+  const promptTile = el('section', { className: 'tile' }, promptBar, promptBody);
+  attachTile(promptTile, promptBody, { id: 'task-prompt', bar: promptBar, label: 'Prompt' });
+  const tabBar = el('div', { className: 'tile-head' }, el('div', { className: 'tabs' }, tabLog, tabDiff));
+  const outputBody = el('div', { className: 'stack' }, logHost, diffHost);
+  const output = el('section', { className: 'tile', dataset: { tileLabel: 'Live log' } }, tabBar, outputBody);
+  attachTile(output, outputBody, { id: 'task-output', bar: tabBar, label: 'Live log' });
+  const sideBar = el('div', { className: 'tile-bar' }, el('span', { className: 'tile-title' }, 'Details'));
+  const sideBody = el('div', { className: 'stack' }, metaHost, tail);
+  const side = el('section', { className: 'task-side tile' }, sideBar, sideBody);
+  attachTile(side, sideBody, { id: 'task-details', bar: sideBar, label: 'Details' });
+  clear(pane, el('div', { className: 'task-fill' }, titleHost, el('div', { className: 'task-body' }, el('div', { className: 'task-main stack' }, promptTile, output, actionsHost), side)));
   term = terminal(id, { stream }); logHost.append(term.node);
-  function setTab(t) { tab = t; logHost.style.display = t === 'log' ? '' : 'none'; diffHost.style.display = t === 'diff' ? '' : 'none'; tabLog.className = t === 'log' ? 'on' : ''; tabDiff.className = t === 'diff' ? 'on' : ''; if (t === 'diff') loadDiff(); }
+  function setTab(t) { tab = t; logHost.style.display = t === 'log' ? '' : 'none'; diffHost.style.display = t === 'diff' ? '' : 'none'; tabLog.className = t === 'log' ? 'on' : ''; tabDiff.className = t === 'diff' ? 'on' : ''; output.dataset.tileLabel = t === 'diff' ? 'Diff' : 'Live log'; if (t === 'diff') loadDiff(); }
   async function loadDiff() { clear(diffHost, skeletonLines(5)); try { renderDiff(diffHost, await api(`/tasks/${id}/diff`)); } catch (e) { clear(diffHost, el('div', { className: 'callout bad' }, e.message)); } }
   let attInfo = null;
   const mpOf = (t) => S.memProps.filter((m) => m.task_id === t.id);
   api(`/tasks/${id}`).then(async (d) => { attInfo = d; await loadServices(d.project_id); draw(true); }).catch(() => {});
   function draw(force) {
     const t = S.tasks.find((x) => x.id === id);
-    if (!t) { clear(tail); clear(promptHost); clear(actionsHost); clear(head, empty({ icon: '?', title: `Task #${id} not found`, text: 'It may have been deleted with its project.' })); return; }
+    if (!t) { clear(tail); clear(promptHost); clear(actionsHost); clear(metaHost); clear(titleHost, empty({ icon: '?', title: `Task #${id} not found`, text: 'It may have been deleted with its project.' })); return; }
     const s = JSON.stringify([t, mpOf(t), (S.svc[t.project_id] || []).length, S.cfg && S.cfg.router]);
-    if (!force && s === sig && head.childNodes.length) return; sig = s;
+    if (!force && s === sig && titleHost.childNodes.length) return; sig = s;
     const p = project(t.project_id);
     const svcPath = t.service_id ? ((S.svc[t.project_id] || []).find((x) => x.id === t.service_id) || {}).path : null;
     const titleBits = [
@@ -318,7 +331,8 @@ async function renderDetail(pane, id, { stream, tab: startTab }) {
         } catch (er) { toastError(er); }
       } })));
     }
-    clear(head, el('div', { className: 'task-title stack' }, ...titleBits), el('div', { className: 'task-meta stack' }, ...metaBits));
+    clear(titleHost, ...titleBits);
+    clear(metaHost, ...metaBits);
     clear(promptHost, el('pre', { className: 'plain' }, t.prompt));
     clear(actionsHost, ...actionBits, row);
     clear(tail, lineageCard(t.id));

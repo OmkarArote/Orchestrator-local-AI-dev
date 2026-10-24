@@ -1,5 +1,9 @@
 # Third-party notices
 
+## Tailwind CSS
+
+`public/style.css` is compiled from `public/css/input.css` with the Tailwind CSS CLI. The preflight and utilities in that file are from [Tailwind CSS](https://github.com/tailwindlabs/tailwindcss), MIT licensed. Copyright Tailwind Labs, Inc.
+
 ## Tabler Icons
 
 The dashboard icons in `public/js/icons.js` and the logo in `public/index.html` use outline path data from [Tabler Icons](https://github.com/tabler/tabler-icons).

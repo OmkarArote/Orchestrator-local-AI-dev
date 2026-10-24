@@ -9,7 +9,7 @@ makes an isolated **git worktree + branch**, runs an engine (a free local model 
 - Engines per task: `local` (aider + Ollama, free), `cursor` (Cursor CLI, uses your Cursor plan, needs your approval; runs are counted, not capped) or `auto` (local first, escalate to Cursor only after you approve).
 - Shared project rules and memory, a local router that suggests the service/engine, plan-first for complex tasks, sequences across services, an advisory AI review, and "Open in Cursor".
 - A read-only **chat** with your local model with `@project` / `@service` mentions, optional **Cursor rules** (`.cursor/rules/*.mdc`) generated per service onto a review branch, and **cross-repo features** (provider service first, contract shared with the consumers, merge-order guard).
-- Zero npm dependencies: Node.js + a static dashboard (no build step). Models are never downloaded unless you switch that on.
+- The running app has zero npm dependencies: Node.js plus a static dashboard (CSS is precompiled). Models are never downloaded unless you switch that on.
 
 ![Task detail](docs/screens/task-detail.png)
 
@@ -25,7 +25,7 @@ cd Orchestrator-local-AI-dev
 Then open the dashboard: **Models** (pick one of your installed Ollama models), **Projects** -> New project -> add an existing repo or create a new one, then **New task**.
 Stop with `./stop.sh`. If port 4310 is taken, start with another one: `ORCH_PORT=4311 ./start.sh`. On Windows use WSL (the scripts are bash).
 
-No `npm install` is needed (there are no npm dependencies; `npm test` and `./start.sh` run on a fresh clone with just Node >= 22.5 and git).
+No `npm install` is needed to run the app or the tests (`npm test` and `./start.sh` run on a fresh clone with just Node >= 22.5 and git). Rebuilding the dashboard CSS is the one exception: `npm install` once, edit `public/css/input.css`, then `npm run css`, and commit `public/style.css`.
 
 ### Requirements
 
@@ -55,7 +55,7 @@ Localhost-only (Host/Origin checks, no auth, so do not expose the port), authori
 ### Development
 
 ```bash
-npm test            # 568 tests on the author machine (568 pass, 0 fail, 0 skipped); fresh-clone/CI count is recorded after the pull-request run (the migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
+npm test            # 607 tests (607 pass, 0 fail, 0 skipped) with and without `CI=1` on the author machine; a fresh-clone CI run records its own count (migration tests that need a private DB backup, and the live-Ollama test, skip), no network, no Ollama or Cursor needed (stubs/fakes)
 npm run doctor      # same as ./setup.sh
 ```
 
@@ -156,7 +156,7 @@ Files:
 | `.cursor/rules/` | this repository's own Cursor rules (conventions and guard rules) |
 | `.github/workflows/ci.yml` | CI: `npm test` on ubuntu and macOS, Node 22 |
 | `lib/proc.js` | subprocess + git helpers with hard timeouts |
-| `public/` | dashboard (no build step). Icons: `public/js/icons.js`. Notices: `THIRD_PARTY_NOTICES.md` |
+| `public/` | dashboard (plain ES modules). Styles: `public/css/input.css` compiled to `public/style.css` (`npm run css`). Icons: `public/js/icons.js`. Notices: `THIRD_PARTY_NOTICES.md` |
 | `data/orchestrator.db` | the database (history is kept; do not delete). Pre-migration snapshots: `data/pre-projects-migration-*.db` |
 | `start.sh` / `stop.sh` | background start/stop using `data/orchestrator.pid` |
 
@@ -291,9 +291,9 @@ A **feature** groups tasks across projects/services, e.g. "create this API in se
 * **API** (`/api/features...`, never under `/api/chat`): see the table. Statuses: `contract_pending`, `planned`, `running`, `contract_drift`, `review`, `done`, `failed`, `cancelled`.
 * **Not done (deliberately)**: LLM-drafted contracts / feature planning from a free-text brief (the contract is human-written or accepted from the provider's extracted API), merging a whole feature with one click (every merge stays a separate human click), 3-way dependencies between consumers (all consumers depend on the provider only).
 
-## Dashboard UI (no build step)
+## Dashboard UI
 
-Plain ES modules in `public/` (`index.html`, `style.css`, `app.js`, `js/*.js`), CSS custom properties, dark/light via `prefers-color-scheme` (toggle in the sidebar footer), no framework.
+Plain ES modules in `public/` (`index.html`, `style.css`, `app.js`, `js/*.js`). `style.css` is compiled from `public/css/input.css` (`npm run css`). CSS custom properties, dark/light via `prefers-color-scheme` (toggle in the top bar), no JS framework.
 * Sidebar: **Projects / Tasks / Features / Chat / Models** + live chips (Ollama, Cursor usage, pending memory proposals). Hash routes: `#/projects`, `#/projects/<id>/<services|deps|context|memory|sequences|settings>`, `#/tasks[/<id>]`, `#/features[/<id>]`, `#/chat[/<id>]`, `#/models`.
   Old links (`?project=N&panel=...`) are mapped.
 * Projects: cards, **New project** modal, authorized-folders card; project page with tabs; services as cards (status/origin/stack chips, repo status, edit, archive, unregister, detect);

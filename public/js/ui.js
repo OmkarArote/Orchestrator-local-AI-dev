@@ -72,12 +72,12 @@ document.addEventListener('keydown', (ev) => {
   }
 });
 /** modal({title, body, footer, wide, onClose, dismissable}) -> {close, body, foot, overlay}. Esc / backdrop click close it. */
-export function modal({ title, body, footer, wide = false, dismissable = () => true, onClose } = {}) {
+export function modal({ title, body, footer, wide = false, className = '', dismissable = () => true, onClose } = {}) {
   const prevFocus = document.activeElement;
   const bodyEl = el('div', { className: 'modal-body' }, body);
   const foot = el('div', { className: 'modal-foot' }, footer);
   const overlay = el('div', { className: 'overlay' });
-  const box = el('div', { className: `modal${wide ? ' wide' : ''}`, role: 'dialog', 'aria-modal': 'true', 'aria-label': title || 'dialog' },
+  const box = el('div', { className: `modal${wide ? ' wide' : ''}${className ? ' ' + className : ''}`, role: 'dialog', 'aria-modal': 'true', 'aria-label': title || 'dialog' },
     el('div', { className: 'modal-head' }, el('h3', { textContent: title || '' }), el('button', { className: 'btn ghost icon ico', 'aria-label': 'Close', onclick: () => api2.close(null) }, icon('x'))),
     bodyEl, footer === undefined ? null : foot);
   overlay.append(box);
@@ -87,6 +87,37 @@ export function modal({ title, body, footer, wide = false, dismissable = () => t
   $('#modal-root').append(overlay);
   setTimeout(() => { const f = $('input:not([type=checkbox]), select, textarea, button.primary', bodyEl) || $('.btn', foot); if (f) f.focus(); }, 30);
   return api2;
+}
+/** Collapse control plus a button that moves the live body into a large modal. The node is the same one, so a log keeps streaming. */
+export function attachTile(section, body, { id, bar, label }) {
+  const key = 'orch.tile.' + id;
+  const name = () => section.dataset.tileLabel || label || id;
+  let collapsed = false;
+  try { collapsed = sessionStorage.getItem(key) === '1'; } catch { /* private mode */ }
+  const collapseBtn = el('button', { type: 'button', className: 'btn ghost sm icon tile-collapse' }, icon('chevron-down'));
+  const expandBtn = el('button', { type: 'button', className: 'btn ghost sm icon', title: 'Open larger view' }, icon('arrows-maximize'));
+  let parked = false;
+  const apply = (on) => {
+    collapsed = on;
+    section.classList.toggle('is-collapsed', on);
+    collapseBtn.setAttribute('aria-expanded', String(!on));
+    collapseBtn.setAttribute('aria-label', `${on ? 'Expand' : 'Collapse'} ${name()}`);
+    collapseBtn.title = on ? 'Expand' : 'Collapse';
+    try { sessionStorage.setItem(key, on ? '1' : '0'); } catch { /* ignore */ }
+  };
+  collapseBtn.addEventListener('click', () => apply(!collapsed));
+  expandBtn.addEventListener('click', () => {
+    if (parked) return;
+    parked = true;
+    const home = body.parentNode;
+    expandBtn.setAttribute('aria-label', `Open ${name()} in a larger view`);
+    modal({ title: name(), className: 'full', body, onClose: () => { if (home) home.append(body); parked = false; } });
+  });
+  bar.append(el('span', { className: 'spacer' }), collapseBtn, expandBtn);
+  body.classList.add('tile-body');
+  apply(collapsed);
+  expandBtn.setAttribute('aria-label', `Open ${name()} in a larger view`);
+  return section;
 }
 /** Close every open modal (used on route changes so a stale dialog never sits over another page). */
 export function closeAllModals() { for (const m of [...stack]) m.close(null); }

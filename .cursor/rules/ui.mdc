@@ -4,7 +4,7 @@ globs: public/**/*.js,public/**/*.css,public/*.html
 alwaysApply: false
 ---
 
-- Plain ES modules, no bundler, no dependencies. `test/m10-ui.test.js` scans every `public/js/*.js`: syntax valid, relative imports exist, and **no `alert(`, `confirm(` or `prompt(` identifiers** - use `toast`, `confirmDialog`, `promptDialog` and `modal` from `ui.js`.
+- Plain ES modules, no JS bundler. Styles compile from `public/css/input.css` with `npm run css` (Tailwind CLI); commit `public/style.css`. `test/m10-ui.test.js` scans every `public/js/*.js`: syntax valid, relative imports exist, and **no `alert(`, `confirm(` or `prompt(` identifiers** - use `toast`, `confirmDialog`, `promptDialog` and `modal` from `ui.js`.
 - Build DOM with `el()`; set text with `textContent`. Never `innerHTML`/`insertAdjacentHTML` for model output, repo text or API strings (the chat markdown renderer builds a node tree and only links `http(s)`).
 - Buttons that call the API go through `busy(btn, fn)`; errors surface via `toastError`. Destructive or repo-writing actions need an explicit confirm/approve step showing exactly what will happen.
 - Accessible by default: labels on inputs, `role`/`aria-*` for custom widgets (listbox, dialog), keyboard operable.

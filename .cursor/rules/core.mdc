@@ -4,7 +4,7 @@ globs:
 alwaysApply: true
 ---
 
-- Node 22, **zero npm dependencies** (`node:sqlite`, `node:test`, global `fetch`). Do not add a package; build steps and bundlers are out too (the UI is plain ES modules).
+- Node 22. The running app keeps **zero npm dependencies** (`node:sqlite`, `node:test`, global `fetch`) and the dashboard stays plain ES modules with no JS bundler. The only package is the Tailwind CLI devDependency: edit `public/css/input.css`, run `npm run css`, and commit `public/style.css`. Do not add any other package.
 - Never read, print or commit `.env*`, keys or the live data (`data/`, port 4310). Tests and one-off scripts use random ports, temp dirs and an explicit `ORCH_DB`; `config.js` refuses to hand out the real DB to anything but `node server.js`.
 - Plan first (a short written plan, then wait for approval) for architectural changes, schema/DB migrations, new endpoints families and anything touching git/fs safety.
 - Never claim a test, build or CI result you did not run. Report real counts: `CI=1 node --test --test-concurrency=4 "test/**/*.test.js"` and the same without `CI=1`.
