@@ -123,8 +123,8 @@ async function servicesTab(box, ctx) {
         el('span', { style: { flex: 1 } }),
         el('button', { className: 'btn sm ghost', textContent: s.archived ? 'Unarchive' : 'Archive', onclick: (e) => busy(e.currentTarget, async () => { await api(`/services/${s.id}/${s.archived ? 'unarchive' : 'archive'}`, {}); toast(s.archived ? 'service restored' : 'service archived', 'ok'); await redo(); }) }),
         el('button', { className: 'btn sm ghost', textContent: 'Unregister', title: 'Removes the registration only; files are never deleted', onclick: async () => {
-          if (!(await confirmDialog({ title: `Unregister ${s.name}?`, message: `This only removes ${s.name} from the orchestrator. The repository folder (${shortPath(s.local_path)}) and its files are NOT deleted.\n\nServices that have task history cannot be unregistered \u2013 archive them instead.`, confirmText: 'Unregister', danger: true }))) return;
-          try { const r = await api(`/services/${s.id}/remove`, {}); toast(`unregistered; files left untouched at ${shortPath(r.local_path)}`, 'ok', 7000); await redo(); } catch (e) { toastError(e); } } })));
+          if (!(await confirmDialog({ title: `Unregister ${s.name}?`, message: `This only removes ${s.name} from the orchestrator. The repository folder (${shortPath(s.local_path)}) and its files are NOT deleted.\n\nServices that have task history cannot be unregistered \u2013 archive them instead.`, confirmText: 'Unregister', danger: true, typeToConfirm: s.name }))) return;
+          try { const r = await api(`/services/${s.id}/remove`, { confirm: s.name }); toast(`unregistered; files left untouched at ${shortPath(r.local_path)}`, 'ok', 7000); await redo(); } catch (e) { toastError(e); } } })));
   }
   async function detect(btn) {
     const out = box.querySelector('#detect-out'); clear(out, skeletonLines(2));
